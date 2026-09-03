@@ -1,0 +1,11 @@
+---
+- name: Configure DevSecOps tooling server
+  hosts: tooling
+  become: true
+
+  roles:
+    - common
+    - docker
+    - sonarqube
+    - artifactory
+    - github-runner
