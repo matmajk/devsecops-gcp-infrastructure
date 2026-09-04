@@ -1,0 +1,7 @@
+all:
+  children:
+    tooling:
+      hosts:
+        tooling-vm:
+          ansible_host: 0.0.0.0
+          ansible_user: your-user
