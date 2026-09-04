@@ -45,8 +45,7 @@ terraform.rc
 
 # Ansible
 *.retry
-ansible/inventories/*/hosts.yml
-ansible/inventories/*/hosts.yaml
+ansible/inventories/*/hosts.{yaml,yml}
 
 # Secrets / credentials
 *.pem
