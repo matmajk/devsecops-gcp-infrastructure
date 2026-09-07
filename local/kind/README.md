@@ -33,6 +33,201 @@ The goal is to keep daily development local while using GCP only for final cloud
 
 The same application and Helm configuration should work both locally and later on GKE with only environment-specific configuration changes.
 
+## Local Environment Resource Budget 
+
+The local DevSecOps platform is designed to run on a resource-constrained development workstation. Because the complete platform contains the application, Kubernetes control plane, GitOps tooling, observability components and additional DevSecOps services, not every optional component needs to remain active continuously. 
+
+The local environment therefore uses reduced resource allocations and enables resource-intensive workloads only when they are required for a particular validation scenario.
+
+### Explicit Kubernetes Resource Budget
+
+The following values represent Kubernetes resource requests and limits explicitly configured by the project.
+
+| Workload group | CPU requests | Memory requests | CPU limits | Memory limits | 
+| --- | ---: | ---: | ---: | ---: | 
+| Online Boutique core | 1.270 cores | 1112 MiB | 2.325 cores | 2030 MiB | 
+| Prometheus, Grafana and Prometheus Operator | 0.300 cores | 448 MiB | 0.850 cores | 1344 MiB | 
+| **Base local platform** | **1.570 cores** | **1560 MiB (~1.52 GiB)** | **3.175 cores** | **3374 MiB (~3.29 GiB)** | 
+| Optional Load Generator | +0.300 cores | +256 MiB | +0.500 cores | +512 MiB | 
+| **With Load Generator** | **1.870 cores** | **1816 MiB (~1.77 GiB)** | **3.675 cores** | **3886 MiB (~3.79 GiB)** |
+
+These values represent only resources explicitly configured through Kubernetes requests and limits. They do not represent the complete memory or CPU footprint of the local environment.
+
+Additional resources are consumed by components such as:
+- Kubernetes control plane
+- etcd
+- CoreDNS
+- kube-proxy
+- container networking
+- Argo CD controllers
+- Argo CD Redis
+- Grafana sidecars
+- kube-state-metrics
+- node-exporter
+- Prometheus configuration sidecars
+- Docker/containerd
+- Docker Desktop and WSL2
+- the host operating system
+
+For this reason, actual host resource consumption can be significantly higher than the sum of Kubernetes resource requests. 
+
+### Resource-Constrained Development Strategy
+
+The local environment separates core workloads from components that are required only for specific test scenarios.
+
+#### Core workloads
+
+The following components are normally kept running:
+- Kind Kubernetes cluster
+- Argo CD
+- Online Boutique core microservices
+
+#### Scenario-dependent workloads
+
+Resource-intensive capabilities can be enabled when required:
+- Prometheus and Grafana
+- Load Generator
+- Loki and Grafana Alloy
+- OpenTelemetry Collector
+- Jaeger
+- SonarQube
+- JFrog Artifactory
+
+This allows each platform capability to be tested locally without requiring all components to consume resources continuously. A full-stack environment can still be enabled temporarily for end-to-end integration and demonstration scenarios.
+
+### Load Generation
+
+The Online Boutique Load Generator is disabled when continuous application traffic is not required.
+
+It can be enabled through environment-specific Helm values when testing:
+- application traffic
+- Prometheus metrics
+- dashboards
+- autoscaling
+- tracing
+- logging
+- failure scenarios
+- resilience behavior
+
+Example:
+
+```yaml
+loadGenerator: 
+  enabled: true
+  users: 12
+  rate: 1
+```
+
+When the test is complete, the workload can be disabled again through Git and removed automatically by Argo CD pruning.
+
+### Runtime Resource Monitoring
+
+Configured Kubernetes requests and limits describe scheduling requirements and resource boundaries. Actual runtime resource consumption should be measured separately.
+
+Prometheus can be used to calculate the current memory usage of all monitored containers:
+
+```
+sum(
+  container_memory_working_set_bytes{
+    container!="",
+    image!=""
+  }
+) / 1024 / 1024 / 1024
+```
+
+The result is expressed in GiB.
+
+Current CPU consumption across monitored containers can be calculated using:
+
+```
+sum(
+  rate(
+    container_cpu_usage_seconds_total{
+      container!="",
+      image!=""
+    }[5m]
+  )
+)
+```
+
+The result is expressed in CPU cores.
+
+### Namespace Resource Usage
+
+Online Boutique memory usage:
+
+```
+sum(
+  container_memory_working_set_bytes{
+    namespace="online-boutique",
+    container!="",
+    image!=""
+  }
+) / 1024 / 1024
+```
+
+Argo CD memory usage:
+
+```
+sum(
+  container_memory_working_set_bytes{
+    namespace="argocd",
+    container!="",
+    image!=""
+  }
+) / 1024 / 1024
+```
+
+Observability stack memory usage:
+
+```
+sum(
+  container_memory_working_set_bytes{
+    namespace="monitoring",
+    container!="",
+    image!=""
+  }
+) / 1024 / 1024
+```
+
+These queries make it possible to compare configured resource budgets with actual runtime consumption.
+
+### Host-Level Monitoring
+
+The complete Kind node footprint can also be inspected from the Docker host:
+
+```bash
+docker stats --no-stream \
+  devsecops-local-control-plane \
+  devsecops-local-worker
+```
+
+This provides a useful host-level view because it includes Kubernetes system components running inside the Kind nodes.
+
+### Local vs Cloud Environment
+
+Resource constraints applied to the local environment are development-specific.
+
+The future GCP environment will use separate configuration appropriate for GKE and cloud infrastructure.
+
+The local profile prioritizes:
+
+- low resource consumption
+- reproducibility
+- functional validation
+- GitOps workflow testing
+- incremental platform development
+
+The cloud profile will instead focus on:
+
+- scalability
+- availability
+- persistent storage
+- production-like observability
+- autoscaling
+- cloud-native integrations
+- security and operational resilience
+
 ## Prerequisites
 
 The following tools must be installed before creating the local Kubernetes cluster:
