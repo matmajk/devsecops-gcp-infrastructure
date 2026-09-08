@@ -83,6 +83,35 @@ This resource-aware model avoids keeping all platform components active simultan
 
 Future profiles will include additional tooling such as JFrog Container Registry.
 
+## Resource-Constrained Development Workflow
+
+The local workstation has limited memory available for the complete platform.
+
+For this reason, Kubernetes and resource-intensive tooling are not expected to remain active simultaneously during normal development.
+
+Before starting SonarQube, the Kind environment can be stopped:
+
+```bash
+make down
+```
+
+Verify that Kind containers are stopped:
+
+```bash
+docker ps
+```
+
+The following containers should no longer be running:
+
+```bash
+devsecops-local-control-plane
+devsecops-local-worker
+```
+
+This leaves additional memory available for SonarQube and PostgreSQL.
+
+A full local environment can still be activated temporarily for end-to-end validation.
+
 ## Environment Configuration
 
 Local configuration is loaded from: `.env`

@@ -527,53 +527,84 @@ kubectl logs <pod-name> \
   --namespace <namespace>
 ```
 
-## Stop vs Delete
+## Cluster Lifecycle
 
-Kind nodes are Docker containers.
+The local Kind cluster lifecycle is managed through the repository-level `Makefile`.
 
-The recommended workflow for this project is to keep the cluster available while actively developing the platform.
+The `Makefile` provides a stable developer interface while the underlying Kind and Docker operations are implemented in: `scripts/kind-cluster.sh`
 
-To inspect the Kind containers:
+### Bootstrap
+
+Create the local cluster: `make bootstrap`
+
+If the cluster already exists but is stopped, the existing Kind node containers are started instead of creating a new cluster.
+
+The command waits until all Kubernetes nodes report the `Ready` condition.
+
+### Start
+
+Start an existing stopped cluster: `make up`
+
+Kind nodes are Docker containers, so stopping the local environment does not require deleting and recreating the cluster.
+
+### Stop
+
+Stop the cluster while preserving its state: `make down`
+
+This stops the Kind node containers and releases most resources consumed by the local Kubernetes environment.
+
+The cluster configuration and workloads remain available and can be restored with: `make up`
+
+This is particularly useful when running resource-intensive local tooling such as SonarQube or JFrog Container Registry.
+
+### Status
+
+Display Kind container and Kubernetes node status: `make status`
+
+### Delete
+
+Delete the local cluster completely: `make cluster-delete`
+
+Unlike `make down`, this operation removes the Kind cluster and should only be used when a full environment recreation is required.
+
+### Direct Script Usage
+
+The lifecycle script can also be executed directly:
 
 ```bash
-docker ps
+./scripts/kind-cluster.sh create
+./scripts/kind-cluster.sh start
+./scripts/kind-cluster.sh stop
+./scripts/kind-cluster.sh status
+./scripts/kind-cluster.sh delete
 ```
 
-The cluster should only be deleted when it is no longer required or when a clean Kubernetes environment is needed.
+The Makefile remains the recommended developer-facing interface.
 
-## Delete the Cluster
+### Resource-Constrained Workflow
 
-Remove the complete local cluster:
+The local environment is designed for a workstation with limited memory.
 
-```bash
-kind delete cluster \
-  --name devsecops-local
+A typical workflow is:
+
+```text
+Kubernetes development
+        ↓
+     make up
+
+Tooling development
+        ↓
+    make down
+        |
+        +--> SonarQube
+        +--> JFrog Container Registry
+
+Return to Kubernetes
+        ↓
+     make up
 ```
 
-Verify:
-
-```bash
-kind get clusters
-```
-
-`devsecops-local` should no longer be present.
-
-Deleting the Kind cluster removes the Kubernetes nodes and all resources stored inside the cluster.
-
-The cluster can always be recreated from `cluster.yaml`.
-
-## Recreate the Cluster
-
-The local Kubernetes environment should be reproducible.
-
-Recreate it with:
-
-```bash
-kind create cluster \
-  --config local/kind/cluster.yaml
-```
-
-Platform components will later be restored declaratively through Helm and Argo CD.
+Stopping the Kind cluster instead of deleting it allows the environment to be resumed without rebuilding the entire platform.
 
 The long-term target workflow is:
 
