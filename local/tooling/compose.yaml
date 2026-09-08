@@ -43,8 +43,62 @@ services:
     cpus: 2.0
     restart: unless-stopped
 
+  jcr-db:
+    image: postgres:${POSTGRES_VERSION}
+    profiles:
+      - jcr
+    environment:
+      POSTGRES_DB: ${JCR_DB_NAME}
+      POSTGRES_USER: ${JCR_DB_USER}
+      POSTGRES_PASSWORD: ${JCR_DB_PASSWORD}
+    volumes:
+      - jcr_db:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${JCR_DB_USER} -d ${JCR_DB_NAME}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    mem_limit: 512m
+    restart: unless-stopped
+
+  jcr:
+    image: releases-docker.jfrog.io/jfrog/artifactory-jcr:${JCR_VERSION}
+    profiles:
+      - jcr
+    depends_on:
+      jcr-db:
+        condition: service_healthy
+    environment:
+      JF_SHARED_DATABASE_TYPE: postgresql
+      JF_SHARED_DATABASE_DRIVER: org.postgresql.Driver
+      JF_SHARED_DATABASE_URL: jdbc:postgresql://jcr-db:5432/${JCR_DB_NAME}
+      JF_SHARED_DATABASE_USERNAME: ${JCR_DB_USER}
+      JF_SHARED_DATABASE_PASSWORD: ${JCR_DB_PASSWORD}
+      JF_ROUTER_ENTRYPOINTS_EXTERNALPORT: 8082
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+    volumes:
+      - jcr_data:/var/opt/jfrog/artifactory
+    mem_limit: 6g
+    cpus: 4.0
+    ulimits:
+      nproc:
+        soft: 65535
+        hard: 65535
+      nofile:
+        soft: 32000
+        hard: 40000
+    restart: unless-stopped
+
 volumes:
   sonarqube_db:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
+  jcr_db:
+  jcr_data:
