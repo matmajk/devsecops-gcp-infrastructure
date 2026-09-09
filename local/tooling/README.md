@@ -186,7 +186,7 @@ docker compose down -v
 
 unless the intention is to delete all local SonarQube and database data.
 
-## Resource Configuration
+### Resource Configuration
 
 The local SonarQube profile uses explicit resource limits.
 
@@ -246,7 +246,7 @@ wsl -d docker-desktop -u root sysctl vm.max_map_count
 
 The setting may need to be revalidated after Docker Desktop or WSL restarts.
 
-## Validate Docker Compose Configuration
+### Validate Docker Compose Configuration
 
 Before starting the environment, validate the rendered configuration:
 
@@ -261,7 +261,7 @@ The resulting configuration should contain:
 
 and should not contain unresolved environment variables.
 
-## Start SonarQube
+### Start SonarQube
 
 From: `local/tooling/`
 
@@ -289,7 +289,7 @@ docker compose logs -f sonarqube
 
 SonarQube can require additional startup time because Elasticsearch and internal services must initialize before the web interface becomes available.
 
-## Validate SonarQube
+### Validate SonarQube
 
 Check the system status:
 
@@ -309,7 +309,7 @@ Access the UI: <http://localhost:9000>
 
 For a fresh installation, use the initial administrator credentials and change the password when prompted.
 
-## Stop SonarQube
+### Stop SonarQube
 
 Stop and remove containers while preserving persistent volumes:
 
@@ -319,7 +319,7 @@ docker compose \
   down
 ```
 
-## Restart SonarQube
+### Restart SonarQube
 
 Start the same persisted environment again:
 
@@ -337,7 +337,7 @@ curl http://localhost:9000/api/system/status
 
 The previously stored SonarQube configuration should remain available.
 
-## Persistence Validation
+### Persistence Validation
 
 Verify Docker volumes:
 
@@ -356,7 +356,7 @@ A persistence test should include:
 
 This confirms that container recreation does not remove SonarQube state.
 
-## Runtime Resource Usage
+### Runtime Resource Usage
 
 Actual resource consumption was measured after SonarQube reached a stable running state using:
 
@@ -392,8 +392,626 @@ Resource usage should be measured again during an actual CI analysis.
 
 That measurement will provide a more representative peak runtime baseline.
 
+## JFrog Container Registry
+
+JFrog Container Registry is used as the local Docker/OCI artifact registry for the DevSecOps platform.
+
+It runs outside the Kind Kubernetes cluster using Docker Compose and uses PostgreSQL for persistent metadata storage.
+
+The local registry will later be integrated with the CI pipeline to store container images produced from the Online Boutique application.
+
+### Architecture
+
+```text
+Developer / CI
+      │
+      │ docker push/pull
+      ▼
+JFrog Container Registry
+      │
+      ├── Docker/OCI artifacts
+      │
+      └── PostgreSQL
+            │
+            └── repository metadata
+```
+
+The JFrog environment is intentionally deployed outside Kubernetes because it is resource-intensive and does not need to consume resources from the local Kind cluster.
+
+### Docker Compose profile
+
+JFrog is isolated using the following Docker Compose profile: `jcr`
+
+This allows JFrog to be started independently from other local tooling.
+
+Validate the Compose configuration:
+
+```bash
+docker compose --profile jcr config
+```
+
+### Environment configuration
+
+JFrog-specific configuration is stored in `.env`.
+
+Example:
+
+```bash
+JCR_VERSION=7.161.24
+
+JCR_DB_NAME=artifactory
+JCR_DB_USER=artifactory
+JCR_DB_PASSWORD=change-me
+```
+
+The real `.env` file must not be committed to Git.
+
+The `.env.example` file should contain only safe example values.
+
+### Start JFrog
+
+Because JFrog is one of the most resource-intensive components in the local environment, stop workloads that are not required before starting it.
+
+Stop the Kind cluster:
+
+```bash
+make down
+```
+
+Stop SonarQube:
+
+```bash
+docker compose --profile sonarqube down
+```
+Start JFrog:
+
+```bash
+docker compose --profile jcr up -d
+```
+Check status:
+
+```bash
+docker compose --profile jcr ps
+```
+Follow JFrog logs:
+
+```bash
+docker compose logs -f jcr
+```
+Follow PostgreSQL logs:
+
+```bash
+docker compose logs -f jcr-db
+```
+
+JFrog may require significantly more startup time than SonarQube.
+
+A running container does not necessarily mean that all JFrog services are already ready.
+
+### Stop JFrog
+
+Stop and remove the JFrog containers while preserving persistent data:
+
+```bash
+docker compose --profile jcr down
+```
+
+To stop the containers without removing them:
+
+```bash
+docker compose --profile jcr stop
+```
+
+Restart stopped containers:
+
+```bash
+docker compose --profile jcr start
+```
+
+Do not use:
+
+```bash
+docker compose --profile jcr down -v
+```
+
+unless the JFrog and PostgreSQL persistent volumes should intentionally be deleted.
+
+### Ports
+
+The local JFrog deployment exposes:
+
+```text
+8081 - Artifactory service
+8082 - JFrog Router/Platform
+```
+
+The UI is available at: <http://localhost:8082/ui/>
+
+The main Artifactory API is available through: <http://localhost:8082/artifactory/>
+### Health checks
+
+Check Artifactory availability:
+
+```bash
+curl http://localhost:8082/artifactory/api/system/ping
+```
+
+Expected response: `OK`
+
+Check JFrog Router readiness:
+
+```bash
+curl http://localhost:8082/router/api/v1/system/readiness
+```
+
+A healthy platform should return a successful readiness response.
+
+These API checks are more reliable than waiting for the JFrog UI to become responsive.
+
+### UI performance
+
+JFrog Container Registry is significantly more resource-intensive than the other local tooling components.
+
+On a memory-constrained workstation, the UI may respond slowly even when:
+
+```text
+Artifactory API       OK
+Router readiness      OK
+PostgreSQL            healthy
+Docker registry       operational
+```
+
+For this project, CLI and API functionality are more important than UI responsiveness.
+
+The future CI pipeline will interact with JFrog mainly through:
+- Docker CLI
+- JFrog REST API
+- JFrog CLI
+
+rather than through the browser interface.
+
+### Local Docker repository
+
+The project uses the following Docker repository: `online-boutique-docker-local`
+
+Images stored in JFrog follow the structure:
+
+```text
+<registry>/online-boutique-docker-local/<image>:<tag>
+```
+
+Example:
+
+```text
+192.168.1.50:8082/online-boutique-docker-local/frontend:v0.10.6
+```
+
+### Local registry address
+
+Define the JFrog registry address:
+
+```bash
+export JCR_HOST=192.168.1.50:8082
+```
+
+The IP address must match the local host address configured for Docker registry access.
+
+Verify:
+
+```bash
+echo "${JCR_HOST}"
+```
+
+### Docker insecure registry
+
+The local JFrog environment currently uses HTTP instead of TLS.
+
+Docker Desktop must therefore allow the local registry as an insecure development registry.
+
+Open:
+
+```text
+Docker Desktop
+      ↓
+Settings
+      ↓
+Docker Engine
+```
+
+Example Docker Engine configuration:
+
+```json
+{
+  "builder": {
+    "gc": {
+      "defaultKeepStorage": "20GB",
+      "enabled": true
+    }
+  },
+  "experimental": false,
+  "insecure-registries": [
+    "192.168.1.50:8082"
+  ]
+}
+```
+
+After applying the configuration, restart Docker Desktop.
+
+Verify:
+
+```bash
+docker info
+```
+
+The configured host should appear under: `Insecure Registries`
+
+This configuration is intended only for local development.
+
+The future cloud environment should use TLS.
+
+### Docker authentication
+
+Authenticate to the local registry:
+
+```bash
+docker login "${JCR_HOST}"
+```
+
+Use the configured JFrog credentials.
+
+For future CI integration, administrator credentials should not be used.
+
+A dedicated CI identity or access token should be configured instead.
+
+### Registry smoke test
+
+A lightweight BusyBox image can be used to validate the complete registry workflow.
+
+Pull the image:
+
+```bash
+docker pull busybox:1.36
+```
+
+Tag it for the JFrog repository:
+
+```bash
+docker tag \
+  busybox:1.36 \
+  "${JCR_HOST}/online-boutique-docker-local/busybox:test"
+```
+
+Push it:
+
+```bash
+docker push \
+  "${JCR_HOST}/online-boutique-docker-local/busybox:test"
+```
+
+The expected workflow is:
+
+```text
+Docker Hub
+    ↓
+docker pull
+    ↓
+docker tag
+    ↓
+JFrog Container Registry
+```
+
+#### List Docker images through the API
+
+The repository contents can be inspected without using the UI.
+
+List Docker repositories:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/docker/online-boutique-docker-local/v2/_catalog \
+  | jq
+```
+
+Example response:
+
+```json
+{
+  "repositories": [
+    "busybox"
+  ]
+}
+```
+
+#### List image tags
+
+List tags for the BusyBox image:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/docker/online-boutique-docker-local/v2/busybox/tags/list \
+  | jq
+```
+
+Example response:
+
+```json
+{
+  "name": "busybox",
+  "tags": [
+    "test"
+  ]
+}
+```
+
+#### List Artifactory repositories
+
+List all configured repositories:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/repositories \
+  | jq
+```
+
+Print only repository names:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/repositories \
+  | jq -r '.[].key'
+```
+
+The following repository should be present: `online-boutique-docker-local`
+
+#### Inspect repository storage
+
+Inspect the repository root:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/storage/online-boutique-docker-local \
+  | jq
+```
+
+Inspect the BusyBox artifact path:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/storage/online-boutique-docker-local/busybox \
+  | jq
+```
+
+#### Pull validation
+
+After successfully pushing the image, remove its JFrog-tagged local copy:
+
+```bash
+docker image rm \
+  "${JCR_HOST}/online-boutique-docker-local/busybox:test"
+```
+
+Optionally remove the original image:
+
+```bash
+docker image rm busybox:1.36
+```
+
+Pull the image back from JFrog:
+
+```bash
+docker pull \
+  "${JCR_HOST}/online-boutique-docker-local/busybox:test"
+``` 
+Run the downloaded image:
+
+```bash
+docker run --rm \
+  "${JCR_HOST}/online-boutique-docker-local/busybox:test" \
+  echo "JFrog registry works"
+```
+
+Expected output: `JFrog registry works`
+
+The complete validation flow is:
+
+```text
+Docker Hub
+    ↓
+docker pull
+    ↓
+docker tag
+    ↓
+JFrog push
+    ↓
+remove local image
+    ↓
+JFrog pull
+    ↓
+docker run
+```
+
+### Persistence validation
+
+Stop the JFrog environment:
+
+```bash
+docker compose --profile jcr down
+``` 
+Restart it:
+
+```bash
+docker compose --profile jcr up -d
+```
+
+Wait until the platform becomes ready:
+
+```bash
+curl http://localhost:8082/router/api/v1/system/readiness
+```
+
+Verify that the repository still exists:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/repositories \
+  | jq -r '.[].key'
+```
+
+Verify that the previously pushed image still exists:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/docker/online-boutique-docker-local/v2/busybox/tags/list \
+  | jq
+```
+
+The `test` tag should still be available.
+
+This confirms persistence across container recreation.
+
+### Resource configuration
+
+The local environment currently uses the following limits:
+
+|Component|CPU limit|Memory limit|
+|:---|:---:|:---:|
+|JFrog Container Registry|4 CPU|6 GiB|
+|PostgreSQL|-|512 MiB|
+|Total configured maximum|~4 CPU|6.5 GiB|
+
+These values provide enough headroom for JFrog startup while preventing the service from consuming unrestricted host resources.
+
+#### Measured resource usage
+
+Resource consumption was measured after the JFrog platform completed its initial startup and became operational.
+
+Measurement command:
+
+```bash
+docker stats --no-stream
+```
+
+Observed JFrog usage for `devsecops-tooling-jcr-1`
+
+```text
+CPU:        6.00%
+Memory:     3.671 GiB/6 GiB
+Memory:     61.18%
+Network:    3.71 MB/7.44 MB
+Block I/O:  114 MB/3.3 MB
+PIDs:       486
+```
+
+Observed PostgreSQL usage for `devsecops-tooling-jcr-db-1`
+
+```text
+CPU:        0.10%
+Memory:     72.6 MiB/512 MiB
+Memory:     14.18%
+Network:    2.71 MB/3.65 MB
+Block I/O:  7.07 MB/13.2 MB
+PIDs:       25
+```
+
+Approximate combined steady-state memory usage:
+
+```text
+JFrog Container Registry:  ~3.67 GiB
+PostgreSQL:                ~0.07 GiB
+------------------------------------
+Total:                     ~3.74 GiB
+```
+
+The measured runtime footprint is lower than the configured maximum but still makes JFrog the most memory-intensive component in the local DevSecOps environment.
+
+A second measurement should be performed later during an actual Online Boutique image build and push.
+
+#### Resource-constrained workflow
+
+The development workstation has approximately 16 GiB of physical RAM.
+
+JFrog should normally be used with other resource-intensive components stopped.
+
+Recommended profile:
+
+```text
+Kind cluster   OFF
+SonarQube      OFF
+JFrog JCR      ON
+```
+
+Stop Kind:
+
+```bash
+make down
+```
+
+Stop SonarQube:
+
+```bash
+docker compose --profile sonarqube down
+```
+
+Start JFrog:
+
+```bash
+docker compose --profile jcr up -d
+```
+
+This avoids unnecessary memory pressure and reduces the probability of WSL swapping.
+
+#### Docker Desktop/WSL memory
+
+During initial JFrog testing, the Docker Desktop WSL environment reported approximately:
+
+```text
+Memory total:       7.6 GiB
+Memory used:        4.9 GiB
+Memory available:   2.5 GiB
+
+Swap total:         2.0 GiB
+Swap used:          ~624 MiB
+```
+
+Check the current Docker Desktop WSL memory state from PowerShell:
+
+```powershell
+wsl -d docker-desktop free -h
+```
+
+The observed swap usage can contribute to slow JFrog UI responsiveness.
+
+If required, WSL resource limits can be configured with:
+
+```powershell
+%USERPROFILE%\.wslconfig
+```
+
+Example:
+
+```yaml
+[wsl2]
+memory=10GB
+swap=4GB
+```
+
+After changing the configuration:
+
+```powershell
+wsl --shutdown
+```
+
+Then restart Docker Desktop.
+
+Verify:
+
+```powershell
+wsl -d docker-desktop free -h
+```
+
 ## Troubleshooting
-### SonarQube Does Not Start
+### SonarQube
+#### SonarQube Does Not Start
 
 Check:
 
@@ -403,7 +1021,7 @@ docker compose logs sonarqube
 
 Look for messages related to: `Elasticsearch`, `vm.max_map_count`, `memory`, `database connection`, `permissions`
 
-### Database Is Not Healthy
+#### Database Is Not Healthy
 
 Check:
 
@@ -421,7 +1039,7 @@ docker compose \
 
 The PostgreSQL container should report a healthy state before SonarQube starts.
 
-### Port 9000 Is Already Used
+#### Port 9000 Is Already Used
 
 Check:
 
@@ -436,7 +1054,7 @@ or on Windows:
 netstat -ano | findstr :9000
 ```
 
-### SonarQube Is OOMKilled or Restarting
+#### SonarQube Is OOMKilled or Restarting
 
 Check:
 
@@ -454,6 +1072,108 @@ docker stats --no-stream
 Avoid reducing the SonarQube memory limit aggressively only to allow more local services to run simultaneously.
 
 The preferred strategy is to disable unrelated workloads through the existing local platform lifecycle mechanisms.
+
+### JFrog
+#### JFrog UI loads slowly
+
+Check Artifactory:
+
+```bash
+curl http://localhost:8082/artifactory/api/system/ping
+```
+
+Check Router readiness:
+
+```bash
+curl http://localhost:8082/router/api/v1/system/readiness
+```
+
+Check resource usage:
+
+```bash
+docker stats --no-stream
+```
+
+Check Docker Desktop memory:
+
+```powershell
+wsl -d docker-desktop free -h
+```
+
+If health endpoints respond correctly while the UI remains slow, use the REST API and Docker CLI for local validation.
+
+#### JFrog container is running but the platform is unavailable
+
+Check JFrog logs:
+
+```bash
+docker compose logs jcr --tail=200
+```
+
+Filter common errors:
+
+```bash
+docker compose logs jcr --tail=500 \
+  | grep -Ei 'error|warn|router|frontend|access|database|oom'
+```
+
+Check PostgreSQL:
+
+```bash
+docker compose logs jcr-db --tail=100
+```
+
+Check status:
+
+```bahs
+docker compose --profile jcr ps
+Check for OOM termination
+docker inspect devsecops-tooling-jcr-1 \
+  --format 'OOMKilled={{.State.OOMKilled}} RestartCount={{.RestartCount}}'
+```
+
+Expected: `OOMKilled=false`
+
+#### Docker cannot connect to JFrog
+
+Verify the registry configuration:
+
+```bash
+docker info
+```
+
+Check JFrog:
+
+```bash
+curl http://localhost:8082/artifactory/api/system/ping
+```
+
+Check authentication:
+
+```bash
+docker login "${JCR_HOST}"
+Docker push fails with authentication errors
+```
+
+Logout:
+
+```bash
+docker logout "${JCR_HOST}"
+```
+
+Login again:
+
+```bash
+docker login "${JCR_HOST}"
+```
+
+Verify that the target repository exists:
+
+```bash
+curl -s -u admin:<PASSWORD> \
+  http://localhost:8082/artifactory/api/repositories \
+  | jq -r '.[].key'
+```
 
 ## Future CI Integration
 
@@ -483,15 +1203,7 @@ The CI pipeline should stop or fail the appropriate stage when the defined quali
 
 The first local implementation will validate this workflow before moving the tooling to GCP.
 
-## JFrog Container Registry
-
-JFrog Container Registry will be added to the local tooling environment in the next iteration.
-
-Its purpose will be to provide a private registry for:
-- Docker images
-- OCI artifacts
-- Helm-related artifacts
-- CI-generated build outputs
+JFrog Container Registry will later become part of the CI/CD workflow.
 
 The expected flow is:
 
@@ -515,24 +1227,30 @@ Kubernetes
 
 Like SonarQube, JFrog will be started only when required by the active development scenario.
 
+The initial CI implementation should validate the workflow with one representative Online Boutique service.
+
+After that, the pipeline can be generalized using reusable or matrix-based GitHub Actions workflows.
+
 ## Future GCP Architecture
 
 The local Docker Compose environment provides the functional baseline for the future cloud tooling layer.
 
-The planned GCP architecture is:
+The future cloud architecture may move DevSecOps tooling to dedicated infrastructure provisioned with Terraform and configured with Ansible.
+
+Target direction:
 
 ```text
-Terraform
-    ↓
-GCP Tooling VM
-    ↓
-Ansible
-    ↓
-Docker
-    |
-    +--> SonarQube
-    |
-    +--> JFrog Container Registry
+ GCP
+  │ 
+  ├── GKE
+  │    ├── Online Boutique
+  │    ├── Argo CD
+  │    └── Observability
+  │
+  └── DevSecOps tooling
+        ├── SonarQube
+        ├── JFrog
+        └── supporting services
 ```
 
 Responsibilities will be separated as follows:
