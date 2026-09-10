@@ -1,0 +1,12 @@
+# Shell and build scripts must use Unix line endings.
+*.sh text eol=lf
+Makefile text eol=lf
+
+# Infrastructure configuration.
+*.yaml text eol=lf
+*.yml text eol=lf
+*.tf text eol=lf
+*.tfvars text eol=lf
+
+# Documentation.
+*.md text eol=lf
