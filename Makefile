@@ -1,4 +1,31 @@
-.PHONY: help fmt validate
+.PHONY: 
+	help \
+	fmt \
+	validate \
+
+	bootstrap \
+	up \
+	down \
+	status \
+	cluster-create \
+	cluster-start \
+	cluster-stop \
+	cluster-delete \
+	cluster-status \
+	cluster-wait \
+
+	tooling-status \
+	tooling-down \
+	tooling-sonar-up \
+	tooling-sonar-down \
+	tooling-sonar-status \
+	tooling-sonar-wait \
+	tooling-sonar-logs \
+	tooling-jcr-up \
+	tooling-jcr-down \
+	tooling-jcr-status \
+	tooling-jcr-wait \
+	tooling-jcr-logs
 
 help:
 	@echo "Available targets:"
@@ -11,23 +38,24 @@ fmt:
 validate:
 	@echo "Terraform validation will be enabled after environment bootstrap."
 
+ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 KIND_CLUSTER_NAME ?= devsecops-local
 KIND_CONFIG ?= local/kind/cluster.yaml
+CLUSTER_SCRIPT := $(ROOT_DIR)/scripts/kind-cluster.sh
+TOOLING_SCRIPT := $(ROOT_DIR)/scripts/tooling.sh
+
+TOOLING_ALLOW_CONCURRENT ?= 0
+TOOLING_RETRY_INTERVAL ?= 5
+SONARQUBE_READY_TIMEOUT ?= 180
+JCR_READY_TIMEOUT ?= 600
 
 export KIND_CLUSTER_NAME
 export KIND_CONFIG
+export TOOLING_ALLOW_CONCURRENT
+export TOOLING_RETRY_INTERVAL
+export SONARQUBE_READY_TIMEOUT
+export JCR_READY_TIMEOUT
 
-.PHONY: \
-	bootstrap \
-	up \
-	down \
-	status \
-	cluster-create \
-	cluster-start \
-	cluster-stop \
-	cluster-delete \
-	cluster-status \
-	cluster-wait
 
 bootstrap: cluster-create
 	@echo
@@ -40,19 +68,56 @@ down: cluster-stop
 status: cluster-status
 
 cluster-create:
-	./scripts/kind-cluster.sh create
+	@$(CLUSTER_SCRIPT) create
 
 cluster-start:
-	./scripts/kind-cluster.sh start
+	@$(CLUSTER_SCRIPT) start
 
 cluster-stop:
-	./scripts/kind-cluster.sh stop
+	@$(CLUSTER_SCRIPT) stop
 
 cluster-delete:
-	./scripts/kind-cluster.sh delete
+	@$(CLUSTER_SCRIPT) delete
 
 cluster-status:
-	./scripts/kind-cluster.sh status
+	@$(CLUSTER_SCRIPT) status
 
 cluster-wait:
-	./scripts/kind-cluster.sh wait
+	@$(CLUSTER_SCRIPT) wait
+
+
+tooling-status:
+	@$(TOOLING_SCRIPT) status
+
+tooling-down:
+	@$(TOOLING_SCRIPT) down-all
+
+tooling-sonar-up:
+	@$(TOOLING_SCRIPT) up sonarqube
+
+tooling-sonar-down:
+	@$(TOOLING_SCRIPT) down sonarqube
+
+tooling-sonar-status:
+	@$(TOOLING_SCRIPT) status sonarqube
+
+tooling-sonar-wait:
+	@$(TOOLING_SCRIPT) wait sonarqube
+
+tooling-sonar-logs:
+	@$(TOOLING_SCRIPT) logs sonarqube
+
+tooling-jcr-up:
+	@$(TOOLING_SCRIPT) up jcr
+
+tooling-jcr-down:
+	@$(TOOLING_SCRIPT) down jcr
+
+tooling-jcr-status:
+	@$(TOOLING_SCRIPT) status jcr
+
+tooling-jcr-wait:
+	@$(TOOLING_SCRIPT) wait jcr
+
+tooling-jcr-logs:
+	@$(TOOLING_SCRIPT) logs jcr
