@@ -32,12 +32,13 @@ Kind Kubernetes               Local Tooling
 The current implementation includes:
 
 ```text
-Local Tooling
-└── SonarQube
+Local Tooling 
+├── SonarQube
+│   └── PostgreSQL
+└── JFrog Container Registry
     └── PostgreSQL
 ```
 
-JFrog Container Registry will be added in a later iteration.
 
 ```text
 Directory Structure
@@ -47,6 +48,69 @@ local/tooling/
 ├── .gitignore
 └── README.md
 ```
+
+## Lifecycle management
+
+Local DevSecOps tooling is managed through the repository-level `Makefile`.
+
+The `Makefile` is the recommended developer-facing interface, while the underlying Docker Compose operations are implemented by: `scripts/tooling.sh`
+
+The lifecycle architecture is:
+
+```text
+Developer
+    ↓
+Makefile
+    ↓
+scripts/tooling.sh
+    ↓
+Docker Compose
+    │
+    ├── SonarQube + PostgreSQL
+    │
+    └── JFrog + PostgreSQL
+```
+
+Direct Docker Compose commands remain useful for troubleshooting, but normal lifecycle operations should use the Make targets documented below.
+
+### Available lifecycle commands:
+
+```bash
+make tooling-status
+make tooling-down
+```
+
+#### `SonarQube:`
+
+```bash
+make tooling-sonar-up
+make tooling-sonar-down
+make tooling-sonar-status
+make tooling-sonar-wait
+make tooling-sonar-logs
+```
+
+#### `JFrog Container Registry:`
+
+```bash
+make tooling-jcr-up
+make tooling-jcr-down
+make tooling-jcr-status
+make tooling-jcr-wait
+make tooling-jcr-logs
+```
+
+Starting a tooling profile through the `Makefile` performs application-level readiness validation rather than relying only on Docker container state.
+
+The lifecycle implementation also prevents accidental concurrent execution of resource-intensive workloads. By default, SonarQube or JFrog cannot be started while the Kind cluster is running, and SonarQube and JFrog cannot be started together.
+
+Concurrent execution can be explicitly enabled for integration or resource testing:
+
+```bash
+make tooling-jcr-up TOOLING_ALLOW_CONCURRENT=1
+```
+
+The override should not be used during normal local development.
 
 ## Design Goals
 
@@ -67,21 +131,43 @@ Its purpose is to validate integration, configuration and DevSecOps workflows be
 
 Tooling services are grouped using Docker Compose profiles.
 
-The current profile is: `sonarqube`
+The currently available profiles are:
+- `sonarqube`
+- `jcr`
 
-This allows SonarQube to be started only when code quality analysis is required.
+Profiles isolate resource-intensive tooling components and allow them to be started only when required.
 
-Example:
+Normal lifecycle operations should be executed through the repository-level `Makefile`:
+
+```bash
+make tooling-sonr-up
+```
+
+or
+
+```bash
+make tooling-jcr-up
+```
+
+Direct Docker Compose commands remain available for configuration validation and troubleshooting.
+
+For example:
 
 ```bash
 docker compose \
   --profile sonarqube \
-  up -d
+  config
+```
+
+or
+
+```bash
+docker compose \
+  --profile jcr \
+  config
 ```
 
 This resource-aware model avoids keeping all platform components active simultaneously.
-
-Future profiles will include additional tooling such as JFrog Container Registry.
 
 ## Resource-Constrained Development Workflow
 
@@ -89,28 +175,64 @@ The local workstation has limited memory available for the complete platform.
 
 For this reason, Kubernetes and resource-intensive tooling are not expected to remain active simultaneously during normal development.
 
-Before starting SonarQube, the Kind environment can be stopped:
+The lifecycle tooling prevents accidental concurrent startup of the main resource-intensive workloads.
+
+Recommended Kubernetes profile:
+
+```text
+Kind        ON
+SonarQube   OFF
+JFrog       OFF
+```
+
+Start or restore Kind:
+
+```bash
+make up
+```
+
+Recommended SonarQube profile:
+
+```text
+Kind        OFF
+SonarQube   ON
+JFrog       OFF
+```
+
+Switch to SonarQube:
 
 ```bash
 make down
+make tooling-jcr-down
+make tooling-sonar-up
 ```
 
-Verify that Kind containers are stopped:
+Recommended JFrog profile:
+
+```text
+Kind        OFF
+SonarQube   OFF
+JFrog       ON
+```
+
+Switch to JFrog:
 
 ```bash
-docker ps
+make down
+make tooling-sonar-down
+make tooling-jcr-up
 ```
 
-The following containers should no longer be running:
+Return to Kubernetes development:
 
 ```bash
-devsecops-local-control-plane
-devsecops-local-worker
+make tooling-down
+make up
 ```
 
-This leaves additional memory available for SonarQube and PostgreSQL.
+Normal lifecycle operations preserve the existing Kind cluster and persistent tooling data.
 
-A full local environment can still be activated temporarily for end-to-end validation.
+A full local environment can still be activated temporarily for end-to-end validation by explicitly allowing concurrent tooling execution when required.
 
 ## Environment Configuration
 
@@ -132,6 +254,11 @@ POSTGRES_VERSION=17
 SONAR_DB_NAME=sonar
 SONAR_DB_USER=sonar
 SONAR_DB_PASSWORD=change-me
+
+JCR_VERSION=7.161.24
+JCR_DB_NAME=artifactory
+JCR_DB_USER=artifactory
+JCR_DB_PASSWORD=change-me
 ```
 
 The real local password should be changed before starting the environment.
@@ -171,17 +298,17 @@ This allows configuration and analysis history to survive container recreation.
 Stopping the environment with:
 
 ```bash
-docker compose \
-  --profile sonarqube \
-  down
+make tooling-sonar-down
 ```
 
 does not remove persistent data.
 
+The lifecycle command stops and removes the SonarQube profile containers while preserving the named Docker volumes.
+
 Avoid:
 
 ```bash
-docker compose down -v
+docker compose --profile sonarqube down -v
 ```
 
 unless the intention is to delete all local SonarQube and database data.
@@ -263,28 +390,30 @@ and should not contain unresolved environment variables.
 
 ### Start SonarQube
 
-From: `local/tooling/`
-
-run:
+From the infrastructure repository root, run:
 
 ```bash
-docker compose \
-  --profile sonarqube \
-  up -d
+make tooling-sonar-up
 ```
+
+The command starts SonarQube and PostgreSQL and waits until SonarQube reports the `UP` state.
 
 Check container status:
 
 ```bash
-docker compose \
-  --profile sonarqube \
-  ps
+make tooling-sonar-status
 ```
 
 Monitor SonarQube startup:
 
 ```bash
-docker compose logs -f sonarqube
+make tooling-sonar-logs
+```
+
+Wait explicitly for an already-running SonarQube profile:
+
+```bash
+make tooling-sonar-wait
 ```
 
 SonarQube can require additional startup time because Elasticsearch and internal services must initialize before the web interface becomes available.
@@ -314,9 +443,7 @@ For a fresh installation, use the initial administrator credentials and change t
 Stop and remove containers while preserving persistent volumes:
 
 ```bash
-docker compose \
-  --profile sonarqube \
-  down
+make tooling-sonar-down
 ```
 
 ### Restart SonarQube
@@ -324,9 +451,7 @@ docker compose \
 Start the same persisted environment again:
 
 ```bash
-docker compose \
-  --profile sonarqube \
-  up -d
+make tooling-sonar-up
 ```
 
 Verify:
@@ -461,51 +586,54 @@ make down
 Stop SonarQube:
 
 ```bash
-docker compose --profile sonarqube down
+make tooling-sonar-down
 ```
 Start JFrog:
 
 ```bash
-docker compose --profile jcr up -d
+make tooling-jcr-up
 ```
+
+The command starts JFrog and PostgreSQL and polls the JFrog Router readiness endpoint until the platform becomes operational.
+
 Check status:
 
 ```bash
-docker compose --profile jcr ps
+make tooling-jcr-status
 ```
-Follow JFrog logs:
+
+Follow JFrog and PostgreSQL logs:
 
 ```bash
-docker compose logs -f jcr
+make tooling-jcr-logs
 ```
-Follow PostgreSQL logs:
+
+Wait explicitly for an already-running JFrog profile:
 
 ```bash
-docker compose logs -f jcr-db
+make tooling-jcr-wait
 ```
 
 JFrog may require significantly more startup time than SonarQube.
 
 A running container does not necessarily mean that all JFrog services are already ready.
 
+The lifecycle command therefore waits for application-level readiness before reporting a successful startup.
+
 ### Stop JFrog
 
-Stop and remove the JFrog containers while preserving persistent data:
+Stop and remove the JFrog profile containers while preserving persistent data:
 
 ```bash
-docker compose --profile jcr down
+make tooling-jcr-down
 ```
 
-To stop the containers without removing them:
+JFrog configuration, PostgreSQL data, repository metadata and stored artifacts remain available for the next startup.
+
+Start the persisted environment again with:
 
 ```bash
-docker compose --profile jcr stop
-```
-
-Restart stopped containers:
-
-```bash
-docker compose --profile jcr start
+make tooling-jcr-up
 ```
 
 Do not use:
@@ -835,19 +963,16 @@ docker run
 Stop the JFrog environment:
 
 ```bash
-docker compose --profile jcr down
-``` 
+make tooling-jcr-down
+```
+
 Restart it:
 
 ```bash
-docker compose --profile jcr up -d
+make tooling-jcr-up
 ```
 
-Wait until the platform becomes ready:
-
-```bash
-curl http://localhost:8082/router/api/v1/system/readiness
-```
+The startup command waits until the JFrog Router reports readiness.
 
 Verify that the repository still exists:
 
@@ -925,40 +1050,6 @@ Total:                     ~3.74 GiB
 The measured runtime footprint is lower than the configured maximum but still makes JFrog the most memory-intensive component in the local DevSecOps environment.
 
 A second measurement should be performed later during an actual Online Boutique image build and push.
-
-#### Resource-constrained workflow
-
-The development workstation has approximately 16 GiB of physical RAM.
-
-JFrog should normally be used with other resource-intensive components stopped.
-
-Recommended profile:
-
-```text
-Kind cluster   OFF
-SonarQube      OFF
-JFrog JCR      ON
-```
-
-Stop Kind:
-
-```bash
-make down
-```
-
-Stop SonarQube:
-
-```bash
-docker compose --profile sonarqube down
-```
-
-Start JFrog:
-
-```bash
-docker compose --profile jcr up -d
-```
-
-This avoids unnecessary memory pressure and reduces the probability of WSL swapping.
 
 #### Docker Desktop/WSL memory
 
@@ -1125,9 +1216,13 @@ docker compose logs jcr-db --tail=100
 
 Check status:
 
-```bahs
+```bash
 docker compose --profile jcr ps
-Check for OOM termination
+```
+
+Check for OOM termination:
+
+```bash
 docker inspect devsecops-tooling-jcr-1 \
   --format 'OOMKilled={{.State.OOMKilled}} RestartCount={{.RestartCount}}'
 ```
@@ -1152,8 +1247,9 @@ Check authentication:
 
 ```bash
 docker login "${JCR_HOST}"
-Docker push fails with authentication errors
 ```
+
+#### Docker push fails with authentication errors
 
 Logout:
 
@@ -1299,11 +1395,10 @@ The future cloud environment will additionally focus on:
 
 The next local tooling milestones are:
 
-1. Integrate JFrog Container Registry
-2. Validate Docker image push and pull
-3. Integrate SonarQube with GitHub Actions
-4. Add Trivy security scanning
-5. Integrate JFrog with the CI pipeline
-6. Automate tooling lifecycle through Make
-7. Run a complete local DevSecOps workflow
-8. Move the validated architecture to GCP
+1. Complete JFrog Docker image push, pull and persistence validation
+2. Integrate SonarQube with GitHub Actions
+3. Add Trivy filesystem and container image security scanning
+4. Integrate JFrog Container Registry with the CI pipeline
+5. Run a complete local DevSecOps workflow
+6. Measure tooling resource consumption during actual CI workloads
+7. Move the validated architecture to GCP
