@@ -25,7 +25,12 @@
 	tooling-jcr-down \
 	tooling-jcr-status \
 	tooling-jcr-wait \
-	tooling-jcr-logs
+	tooling-jcr-logs \
+
+	docker-status \
+	docker-clean \
+	docker-clean-cache \
+	docker-clean-volumes
 
 help:
 	@echo "Available targets:"
@@ -43,11 +48,13 @@ KIND_CLUSTER_NAME ?= devsecops-local
 KIND_CONFIG ?= local/kind/cluster.yaml
 CLUSTER_SCRIPT := $(ROOT_DIR)/scripts/kind-cluster.sh
 TOOLING_SCRIPT := $(ROOT_DIR)/scripts/tooling.sh
+DOCKER_CLEANUP_SCRIPT := $(ROOT_DIR)/scripts/docker-cleanup.sh
 
 TOOLING_ALLOW_CONCURRENT ?= 0
 TOOLING_RETRY_INTERVAL ?= 5
 SONARQUBE_READY_TIMEOUT ?= 180
 JCR_READY_TIMEOUT ?= 600
+DOCKER_BUILD_CACHE_KEEP_STORAGE ?= 5GB
 
 export KIND_CLUSTER_NAME
 export KIND_CONFIG
@@ -121,3 +128,19 @@ tooling-jcr-wait:
 
 tooling-jcr-logs:
 	@$(TOOLING_SCRIPT) logs jcr
+
+
+docker-status:
+	@DOCKER_BUILD_CACHE_KEEP_STORAGE="$(DOCKER_BUILD_CACHE_KEEP_STORAGE)" \
+		"$(DOCKER_CLEANUP_SCRIPT)" status
+
+docker-clean-cache:
+	@DOCKER_BUILD_CACHE_KEEP_STORAGE="$(DOCKER_BUILD_CACHE_KEEP_STORAGE)" \
+		"$(DOCKER_CLEANUP_SCRIPT)" cache
+
+docker-clean-volumes:
+	@"$(DOCKER_CLEANUP_SCRIPT)" volumes
+
+docker-clean:
+	@DOCKER_BUILD_CACHE_KEEP_STORAGE="$(DOCKER_BUILD_CACHE_KEEP_STORAGE)" \
+		"$(DOCKER_CLEANUP_SCRIPT)" clean

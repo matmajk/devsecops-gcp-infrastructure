@@ -609,6 +609,104 @@ make tooling-down
 make up
 ```
 
+### `docker-cleanup.sh`
+
+The `docker-cleanup.sh` script provides conservative Docker storage cleanup for the local DevSecOps environment.
+
+It is designed to reclaim disk space without removing persistent platform data.
+
+Supported operations:
+
+```text
+status
+cache
+volumes
+clean
+help
+```
+
+#### Usage:
+
+Show current Docker storage usage:
+
+```bash
+./scripts/docker-cleanup.sh status
+```
+
+Clean unused Docker build cache:
+
+```bash
+./scripts/docker-cleanup.sh cache
+```
+
+Clean unused anonymous Docker volumes:
+
+```bash
+./scripts/docker-cleanup.sh volumes
+```
+
+Run the complete safe cleanup:
+
+```bash
+./scripts/docker-cleanup.sh clean
+```
+
+#### Build Cache Retention
+
+The amount of Docker build cache retained after cleanup is controlled through: `DOCKER_BUILD_CACHE_KEEP_STORAGE`
+
+Default: `5GB`
+
+Example:
+
+```bash
+DOCKER_BUILD_CACHE_KEEP_STORAGE=3GB \
+  ./scripts/docker-cleanup.sh cache
+```
+
+The build cache cleanup uses Docker's storage retention mechanism instead of deleting Docker data indiscriminately.
+
+#### Volume Safety
+
+Volume cleanup intentionally uses:
+
+```bash
+docker volume prune
+```
+
+without the `--all` option.
+
+As a result, cleanup is restricted to unused anonymous volumes.
+
+Named persistent volumes used by local platform tooling are preserved, including:
+- devsecops-tooling_jcr_data
+- devsecops-tooling_jcr_db
+- devsecops-tooling_sonarqube_data
+- devsecops-tooling_sonarqube_db
+- devsecops-tooling_sonarqube_extensions
+- devsecops-tooling_sonarqube_logs
+
+The cleanup script does not execute:
+
+```bash
+docker system prune
+docker volume prune --all
+docker image prune --all
+```
+
+#### Makefile Integration
+
+The repository-level `Makefile` exposes the following targets:
+
+```bash
+make docker-status
+make docker-clean-cache
+make docker-clean-volumes
+make docker-clean
+```
+
+The recommended general maintenance command is: `make docker-clean`
+
 ## Future Script Library
 
 Some helper functions used by operational scripts are intentionally kept local for now.
