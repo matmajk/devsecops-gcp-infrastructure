@@ -29,6 +29,7 @@ Kind Kubernetes               Local Tooling
      Argo CD
   Observability
 ```
+
 The current implementation includes:
 
 ```text
@@ -39,11 +40,13 @@ Local Tooling
     └── PostgreSQL
 ```
 
+Both tooling stacks are deployed locally through Docker Compose and use persistent PostgreSQL databases.
 
 ```text
 Directory Structure
 local/tooling/
 ├── compose.yaml
+├── .env
 ├── .env.example
 ├── .gitignore
 └── README.md
@@ -120,7 +123,7 @@ The local tooling environment is designed to provide:
 - persistent application data
 - explicit resource limits
 - resource-aware development on a constrained workstation
-- compatibility with future CI pipelines
+- integration with local self-hosted GitHub Actions workflows
 - a migration path to a dedicated tooling VM in GCP
 
 The local implementation is not intended to reproduce a production-grade high-availability setup.
@@ -264,6 +267,47 @@ JCR_DB_PASSWORD=change-me
 The real local password should be changed before starting the environment.
 
 Do not commit `.env.`
+
+### Database Password Persistence
+
+PostgreSQL credentials configured through `.env` are used when the database volume is initialized for the first time.
+
+Changing values such as:
+
+```text
+SONAR_DB_PASSWORD
+JCR_DB_PASSWORD
+```
+
+after the PostgreSQL volume has already been created does not automatically update the password stored for the existing database user.
+
+For example, changing `SONAR_DB_PASSWORD` in `.env` without rotating the password of the existing `sonar` PostgreSQL role will cause SonarQube authentication failures.
+
+The password for an existing SonarQube database can be changed interactively with:
+
+```bash
+docker exec -it \
+  devsecops-tooling-sonarqube-db-1 \
+  psql -U sonar -d sonar
+```
+
+Inside `psql`:
+
+```text
+\password sonar
+```
+
+After rotating the database password, the following values must remain synchronized:
+
+```text
+PostgreSQL role password
+        =
+local/tooling/.env
+        =
+GitHub Actions SONAR_DB_PASSWORD secret
+```
+
+Persistent database volumes should not be removed only to apply a password change.
 
 ## SonarQube
 
@@ -1271,29 +1315,52 @@ curl -s -u admin:<PASSWORD> \
   | jq -r '.[].key'
 ```
 
-## Future CI Integration
+## CI Integration
 
-SonarQube will become part of the CI quality gate.
+SonarQube is integrated with the application CI workflow executed by the local self-hosted GitHub Actions runner.
 
-The planned pipeline is:
+The initial implementation validates `productcatalogservice` as the representative Online Boutique service.
+
+The current CI flow is:
 
 ```text
-Pull Request
-     ↓
-GitHub Actions
-     |
-     +--> unit tests
-     |
-     +--> linting
-     |
-     +--> SonarQube analysis
-     |
-     +--> quality gate
-     |
-     +--> security scanning
-     |
-     +--> container build
+GitHub Actions 
+    ↓
+Self-Hosted Runner
+Ubuntu WSL2
+    │
+    ├── Checkout application repository
+    │
+    ├── Checkout infrastructure repository
+    │
+    ├── Download Go dependencies
+    │
+    ├── Run unit tests
+    │
+    ├── Generate coverage report
+    │
+    └── Build service binary
+              ↓
+        main branch only
+              │
+              ├── Prepare SonarQube resource profile
+              ├── Start SonarQube
+              ├── Wait for readiness
+              ├── Run SonarQube analysis
+              ├── Validate Quality Gate
+              ├── Stop SonarQube
+              └── Clean generated CI files
 ```
+
+The application and infrastructure repositories are checked out into isolated sibling directories:
+
+```text
+$GITHUB_WORKSPACE/
+├── application/
+└── infrastructure/
+```
+
+This prevents repository cleanup operations from affecting the secondary infrastructure checkout and keeps CI workspace ownership explicit.
 
 The CI pipeline should stop or fail the appropriate stage when the defined quality requirements are not satisfied.
 
@@ -1323,9 +1390,107 @@ Kubernetes
 
 Like SonarQube, JFrog will be started only when required by the active development scenario.
 
-The initial CI implementation should validate the workflow with one representative Online Boutique service.
+### SonarQube Analysis
 
-After that, the pipeline can be generalized using reusable or matrix-based GitHub Actions workflows.
+The SonarQube project used by the initial CI implementation is:
+
+```text
+Project key:
+online-boutique-productcatalogservice
+
+Project name:
+Online Boutique - Product Catalog Service
+```
+
+The service configuration is stored in: `src/productcatalogservice/sonar-project.properties`
+
+Go test coverage is generated before the scan:
+
+```go
+go test -coverprofile=coverage.out ./...
+```
+
+and imported into SonarQube through: `sonar.go.coverage.reportPaths=coverage.out`
+
+Generated analysis files such as:
+
+```text
+coverage.out
+.scannerwork/
+```
+
+are treated as ephemeral CI artifacts and are removed after the workflow finishes.
+
+#### Main Branch Analysis
+
+The local SonarQube Community Build is used for main-branch analysis.
+
+Feature branches can execute the normal test and build stages, while SonarQube analysis and Quality Gate validation are executed only for: `main`
+
+This avoids relying on branch and pull request analysis capabilities that are not part of the current local SonarQube setup.
+
+The validated workflow is therefore:
+
+```text
+Feature branch
+      │
+      ├── tests
+      └── build
+
+    merge
+      ↓
+    main
+      │
+      ├── tests
+      ├── coverage
+      ├── build
+      ├── SonarQube analysis
+      └── Quality Gate
+```
+
+### GitHub Actions Configuration
+
+The workflow uses the following GitHub Actions secret values:
+
+```text
+SONAR_TOKEN
+SONAR_DB_PASSWORD
+```
+
+and repository variables:
+
+```text
+SONAR_HOST_URL
+INFRASTRUCTURE_REPOSITORY
+```
+
+For the local self-hosted runner:
+
+```text
+SONAR_HOST_URL=http://localhost:9000
+```
+
+`SONAR_DB_PASSWORD` must match the password configured for the persisted local PostgreSQL `sonar` user.
+
+The SonarQube token is stored only as a GitHub Actions secret and is not committed to the repository.
+
+### Resource-Aware CI Lifecycle
+
+The self-hosted runner shares the development workstation with Kind, SonarQube and JFrog.
+
+The workflow therefore starts resource-intensive tooling only when required.
+
+For the SonarQube stage:
+
+```text
+Kind       OFF
+JFrog      OFF
+SonarQube  ON
+```
+
+After Quality Gate validation completes, SonarQube is stopped again to release memory for subsequent pipeline stages.
+
+This resource-aware lifecycle allows the local environment to validate the DevSecOps workflow without keeping all platform components active simultaneously.
 
 ## Future GCP Architecture
 
@@ -1395,10 +1560,12 @@ The future cloud environment will additionally focus on:
 
 The next local tooling milestones are:
 
-1. Complete JFrog Docker image push, pull and persistence validation
-2. Integrate SonarQube with GitHub Actions
-3. Add Trivy filesystem and container image security scanning
-4. Integrate JFrog Container Registry with the CI pipeline
-5. Run a complete local DevSecOps workflow
-6. Measure tooling resource consumption during actual CI workloads
-7. Move the validated architecture to GCP
+1. Add Trivy filesystem vulnerability scanning to the CI workflow.
+2. Build the `productcatalogservice` container image in CI.
+3. Add Trivy container image scanning.
+4. Integrate JFrog Container Registry image publishing with the CI workflow.
+5. Validate the complete build, scan and artifact publication flow.
+6. Integrate the produced image with the local GitOps deployment workflow.
+7. Run the complete local DevSecOps workflow end to end.
+8. Generalize the validated CI workflow for additional Online Boutique services.
+9. Move the validated architecture to GCP.
