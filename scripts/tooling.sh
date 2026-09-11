@@ -60,8 +60,22 @@ on_error() {
 }
 
 
-trap on_error ERR
+handle_interrupt() {
+    printf '\n'
+    warn "Operation interrupted."
+    exit 130
+}
 
+
+handle_termination() {
+    printf '\n'
+    warn "Operation terminated."
+    exit 143
+}
+
+trap on_error ERR
+trap handle_interrupt INT
+trap handle_termination TERM
 
 require_command() {
     local command="$1"
