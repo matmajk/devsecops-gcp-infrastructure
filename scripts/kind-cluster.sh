@@ -15,6 +15,7 @@ readonly REPO_ROOT="$(
 readonly CLUSTER_NAME="${KIND_CLUSTER_NAME:-devsecops-local}"
 readonly KIND_CONFIG="${KIND_CONFIG:-${REPO_ROOT}/local/kind/cluster.yaml}"
 readonly KUBE_CONTEXT="kind-${CLUSTER_NAME}"
+readonly JFROG_REGISTRY="${JFROG_REGISTRY:-}"
 readonly READY_TIMEOUT="${KIND_READY_TIMEOUT:-180s}"
 
 
@@ -161,6 +162,63 @@ wait_for_cluster() {
 }
 
 
+validate_jfrog_registry() {
+    [[ -n "${JFROG_REGISTRY}" ]] || return 0
+
+    [[ "${JFROG_REGISTRY}" != *"://"* ]] \
+        || die "JFROG_REGISTRY must not contain a URL scheme."
+
+    [[ "${JFROG_REGISTRY}" != */* ]] \
+        || die "JFROG_REGISTRY must use host:port format."
+
+    [[ "${JFROG_REGISTRY}" =~ :[0-9]+$ ]] \
+        || die "JFROG_REGISTRY must include a port, for example 192.168.1.1:8082."
+}
+
+
+configure_jfrog_registry() {
+    [[ -n "${JFROG_REGISTRY}" ]] || {
+        info "JFROG_REGISTRY is not configured. Skipping Kind registry configuration."
+        return
+    }
+
+    validate_jfrog_registry
+
+    local registry_url="http://${JFROG_REGISTRY}"
+    local registry_dir="/etc/containerd/certs.d/${JFROG_REGISTRY}"
+    local hosts_config
+    local -a nodes=()
+
+    mapfile -t nodes < <(get_cluster_containers)
+
+    ((${#nodes[@]} > 0)) \
+        || die "No Kind nodes found for cluster '${CLUSTER_NAME}'."
+
+    hosts_config="$(cat <<EOF
+server = "${registry_url}"
+
+[host."${registry_url}"]
+  capabilities = ["pull", "resolve"]
+EOF
+)"
+
+    log "Configuring Kind access to JFrog registry '${JFROG_REGISTRY}'"
+
+    for node in "${nodes[@]}"; do
+        info "Configuring registry on '${node}'"
+
+        MSYS_NO_PATHCONV=1 \
+            docker exec "${node}" \
+            mkdir -p "${registry_dir}"
+
+        printf '%s\n' "${hosts_config}" \
+            | MSYS_NO_PATHCONV=1 \
+                docker exec -i "${node}" \
+                sh -c "cat > '${registry_dir}/hosts.toml'"
+    done
+}
+
+
 create_cluster() {
     require_command docker
     require_command kind
@@ -173,6 +231,7 @@ create_cluster() {
         if cluster_is_running; then
             info "Cluster '${CLUSTER_NAME}' is already running."
             refresh_kubeconfig
+            configure_jfrog_registry
             wait_for_cluster
         else
             start_cluster
@@ -187,6 +246,7 @@ create_cluster() {
         --name "${CLUSTER_NAME}" \
         --config "${KIND_CONFIG}"
 
+    configure_jfrog_registry
     wait_for_cluster
 }
 
@@ -201,6 +261,7 @@ start_cluster() {
 
     if cluster_is_running; then
         info "Cluster '${CLUSTER_NAME}' is already running."
+        configure_jfrog_registry
         wait_for_cluster
         return
     fi
@@ -212,6 +273,7 @@ start_cluster() {
 
     docker start "${containers[@]}" >/dev/null
 
+    configure_jfrog_registry
     wait_for_cluster
 }
 
