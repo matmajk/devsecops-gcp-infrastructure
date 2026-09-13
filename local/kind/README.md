@@ -281,16 +281,18 @@ The cluster topology may be extended later if additional nodes are required for 
 
 ## Create the Cluster
 
-From the infrastructure repository root:
+The local Kind cluster should normally be created through the repository-level
+`Makefile`:
 
 ```bash
-kind create cluster \
-  --config local/kind/cluster.yaml
+make bootstrap
 ```
 
-Kind creates Docker containers that act as Kubernetes nodes.
+The `Makefile` delegates cluster lifecycle operations to `scripts/kind-cluster.sh`, which applies the required local cluster
+configuration and waits for the Kubernetes nodes to become ready.
 
-After cluster creation, Kind automatically adds a new Kubernetes context to the local kubeconfig.
+Direct Kind commands are intended only for troubleshooting or development of
+the cluster automation.
 
 ## Verify the Kubernetes Context
 
@@ -344,7 +346,7 @@ Depending on the Kind and Kubernetes versions, this may include components such 
 
 ## Development Namespaces
 
-The platform initially uses the following namespaces:
+The platform uses the following namespaces:
 
 ```text
 online-boutique
@@ -360,17 +362,9 @@ Their intended responsibilities are:
 | `argocd`          | Argo CD and GitOps components                    |
 | `monitoring`      | Prometheus, Grafana and observability components |
 
-During the initial cluster smoke test, namespaces may be created manually.
-
-Later they should be managed declaratively through GitOps.
-
-Create them manually if required:
-
-```bash
-kubectl create namespace online-boutique
-kubectl create namespace argocd
-kubectl create namespace monitoring
-```
+Platform namespaces are managed declaratively through the GitOps repository
+and reconciled by Argo CD. Manual namespace creation should only be used for
+temporary troubleshooting.
 
 Verify:
 
@@ -622,6 +616,98 @@ Helm
 Platform + Online Boutique
 ```
 
+## Local Container Registry
+
+The Kind cluster supports pulling container images from the local JFrog Container Registry.
+
+Registry access is configured automatically by `scripts/kind-cluster.sh` on every Kind node using containerd registry host configuration.
+
+### Registry Configuration
+
+Set the local registry address before creating or starting the cluster:
+
+```bash
+export JFROG_REGISTRY="<host>:8082"
+
+make bootstrap
+```
+
+For an existing cluster:
+
+```bash
+export JFROG_REGISTRY="<host>:8082"
+
+make up
+```
+
+The lifecycle script applies the registry configuration to every Kind node under:
+`/etc/containerd/certs.d/<registry>/hosts.toml`
+
+The configuration allows the Kind container runtime to resolve and pull images from the local JFrog registry over HTTP.
+
+The HTTP registry configuration is intended only for local development. The future cloud environment should use TLS-secured registry access.
+
+### Cluster Lifecycle
+
+Registry configuration is reapplied when the Kind cluster is created or started.
+
+This keeps registry access consistent across the normal cluster lifecycle:
+
+```text
+  make bootstrap
+        ↓
+configure registry
+        ↓
+  cluster ready
+
+    make down
+        ↓
+ cluster stopped
+
+    make up
+        ↓
+configure registry
+        ↓
+ cluster ready
+```
+
+The registry address is provided through `JFROG_REGISTRY` and is not hardcoded in the repository because it depends on the local workstation network configuration.
+
+### Authentication
+
+Registry credentials are not stored in the Kind node configuration or committed to Git.
+
+Container runtime connectivity and registry authentication are separate concerns:
+
+```text
+Kind containerd configuration
+             ↓
+    registry connectivity
+
+Kubernetes imagePullSecret
+             ↓
+  registry authentication
+```
+
+Private image authentication is provided to Kubernetes workloads through `imagePullSecrets`.
+
+The corresponding Kubernetes Secret is created at runtime and must not contain credentials committed to the GitOps repository.
+
+### Validation
+
+Registry connectivity can be validated directly through the Kind container runtime.
+
+Example:
+
+```bash
+docker exec <kind-node> \
+  crictl pull \
+  --creds "<username>:<token>" \
+  "<registry>/online-boutique-docker-local/productcatalogservice:<tag>"
+```
+
+The local integration has been validated on both the Kind control-plane and worker nodes using an image published by the application CI pipeline to JFrog.
+
 ## Local vs GCP Environment
 
 The local Kind cluster is intended for daily development and integration testing.
@@ -674,22 +760,23 @@ These include:
 * vulnerability scanning
 * declarative configuration
 
-## Planned Extensions
+## Current Focus
 
-This environment will be expanded incrementally with:
+The current local integration milestone is completing the artifact delivery
+path:
 
-1. Online Boutique Helm chart
-2. Argo CD
-3. GitOps deployment
-4. Prometheus
-5. Grafana
-6. Loki
-7. OpenTelemetry Collector
-8. Jaeger
-9. NetworkPolicies
-10. RBAC
-11. HPA
-12. failure scenarios
-13. local CI/CD integration
+```text
+ Application CI
+       ↓
+     JFrog
+       ↓
+GitOps promotion
+       ↓
+    Argo CD
+       ↓
+Kind Kubernetes
+```
 
-Each component should be validated locally before its equivalent is deployed to GKE.
+After the end-to-end delivery flow is validated, the next local platform work
+will focus on Kubernetes workload reliability before the platform is migrated
+to GKE.
