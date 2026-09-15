@@ -1,242 +1,100 @@
 # Local Kubernetes Environment
 
-This directory contains the configuration and documentation for the local Kubernetes development environment used by the DevSecOps platform project.
+Local Kubernetes environment used to validate the DevSecOps platform before migration to GKE.
 
-The local environment is designed to provide a low-cost, reproducible Kubernetes platform for development and integration testing before deploying the same workloads to Google Kubernetes Engine (GKE).
+The cluster is implemented with Kind and integrates with the GitOps and local CI/CD workflows.
 
-The local Kubernetes cluster is created with **Kind (Kubernetes IN Docker)**.
+## Table of Contents
+
+* [Purpose](#purpose)
+* [Architecture](#architecture)
+* [Cluster Topology](#cluster-topology)
+* [Prerequisites](#prerequisites)
+* [Lifecycle](#lifecycle)
+
+  * [Bootstrap](#bootstrap)
+  * [Start](#start)
+  * [Stop](#stop)
+  * [Status](#status)
+  * [Delete](#delete)
+* [Kubeconfig Restoration](#kubeconfig-restoration)
+* [Local Registry Integration](#local-registry-integration)
+* [Resource Model](#resource-model)
+* [CI/CD Integration](#cicd-integration)
+* [Security](#security)
+* [Quick Validation](#quick-validation)
+* [Local vs GCP](#local-vs-gcp)
 
 ## Purpose
 
-The local environment is used to validate Kubernetes, Helm, GitOps, CI/CD and observability workflows without requiring cloud infrastructure.
-
-It will be used to test:
+The local environment validates:
 
 * Kubernetes workloads
-* Helm charts
-* Argo CD
-* GitOps workflows
-* Online Boutique microservices
-* RBAC
-* NetworkPolicies
-* Horizontal Pod Autoscaling
-* resource requests and limits
-* readiness and liveness probes
-* Prometheus
-* Grafana
-* Loki
-* OpenTelemetry
-* Jaeger
-* failure and recovery scenarios
+* Helm-rendered application configuration
+* Argo CD and GitOps reconciliation
+* private registry image pulls
+* CI/CD integration
+* observability
+* security settings
+* application lifecycle and failure scenarios
 
-The goal is to keep daily development local while using GCP only for final cloud integration and GKE validation.
+Daily development remains local while GCP is reserved for final cloud integration and GKE validation.
 
-The same application and Helm configuration should work both locally and later on GKE with only environment-specific configuration changes.
+## Architecture
 
-## Local Environment Resource Budget 
-
-The local DevSecOps platform is designed to run on a resource-constrained development workstation. Because the complete platform contains the application, Kubernetes control plane, GitOps tooling, observability components and additional DevSecOps services, not every optional component needs to remain active continuously. 
-
-The local environment therefore uses reduced resource allocations and enables resource-intensive workloads only when they are required for a particular validation scenario.
-
-### Explicit Kubernetes Resource Budget
-
-The following values represent Kubernetes resource requests and limits explicitly configured by the project.
-
-| Workload group | CPU requests | Memory requests | CPU limits | Memory limits | 
-| --- | ---: | ---: | ---: | ---: | 
-| Online Boutique core | 1.270 cores | 1112 MiB | 2.325 cores | 2030 MiB | 
-| Prometheus, Grafana and Prometheus Operator | 0.300 cores | 448 MiB | 0.850 cores | 1344 MiB | 
-| **Base local platform** | **1.570 cores** | **1560 MiB (~1.52 GiB)** | **3.175 cores** | **3374 MiB (~3.29 GiB)** | 
-| Optional Load Generator | +0.300 cores | +256 MiB | +0.500 cores | +512 MiB | 
-| **With Load Generator** | **1.870 cores** | **1816 MiB (~1.77 GiB)** | **3.675 cores** | **3886 MiB (~3.79 GiB)** |
-
-These values represent only resources explicitly configured through Kubernetes requests and limits. They do not represent the complete memory or CPU footprint of the local environment.
-
-Additional resources are consumed by components such as:
-- Kubernetes control plane
-- etcd
-- CoreDNS
-- kube-proxy
-- container networking
-- Argo CD controllers
-- Argo CD Redis
-- Grafana sidecars
-- kube-state-metrics
-- node-exporter
-- Prometheus configuration sidecars
-- Docker/containerd
-- Docker Desktop and WSL2
-- the host operating system
-
-For this reason, actual host resource consumption can be significantly higher than the sum of Kubernetes resource requests. 
-
-### Resource-Constrained Development Strategy
-
-The local environment separates core workloads from components that are required only for specific test scenarios.
-
-#### Core workloads
-
-The following components are normally kept running:
-- Kind Kubernetes cluster
-- Argo CD
-- Online Boutique core microservices
-
-#### Scenario-dependent workloads
-
-Resource-intensive capabilities can be enabled when required:
-- Prometheus and Grafana
-- Load Generator
-- Loki and Grafana Alloy
-- OpenTelemetry Collector
-- Jaeger
-- SonarQube
-- JFrog Artifactory
-
-This allows each platform capability to be tested locally without requiring all components to consume resources continuously. A full-stack environment can still be enabled temporarily for end-to-end integration and demonstration scenarios.
-
-### Load Generation
-
-The Online Boutique Load Generator is disabled when continuous application traffic is not required.
-
-It can be enabled through environment-specific Helm values when testing:
-- application traffic
-- Prometheus metrics
-- dashboards
-- autoscaling
-- tracing
-- logging
-- failure scenarios
-- resilience behavior
-
-Example:
-
-```yaml
-loadGenerator: 
-  enabled: true
-  users: 12
-  rate: 1
+```text
+                 Application CI
+                       │
+                       ▼
+                     JFrog
+                       │
+                       ▼
+                GitOps Promotion
+                       │
+                       ▼
+                    Argo CD
+                       │
+                       ▼
+                Kind Kubernetes
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+          ▼            ▼            ▼
+    Online Boutique  GitOps     Observability
 ```
 
-When the test is complete, the workload can be disabled again through Git and removed automatically by Argo CD pruning.
+## Cluster Topology
 
-### Runtime Resource Monitoring
+The local cluster contains two Kubernetes nodes:
 
-Configured Kubernetes requests and limits describe scheduling requirements and resource boundaries. Actual runtime resource consumption should be measured separately.
-
-Prometheus can be used to calculate the current memory usage of all monitored containers:
-
-```
-sum(
-  container_memory_working_set_bytes{
-    container!="",
-    image!=""
-  }
-) / 1024 / 1024 / 1024
+```text
+               devsecops-local
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+          ▼                     ▼
+   control-plane              worker
 ```
 
-The result is expressed in GiB.
+The control-plane node hosts Kubernetes control-plane services.
 
-Current CPU consumption across monitored containers can be calculated using:
+The worker node provides additional scheduling capacity for application workloads.
 
+Cluster configuration is stored in:
+
+```text
+local/kind/cluster.yaml
 ```
-sum(
-  rate(
-    container_cpu_usage_seconds_total{
-      container!="",
-      image!=""
-    }[5m]
-  )
-)
-```
-
-The result is expressed in CPU cores.
-
-### Namespace Resource Usage
-
-Online Boutique memory usage:
-
-```
-sum(
-  container_memory_working_set_bytes{
-    namespace="online-boutique",
-    container!="",
-    image!=""
-  }
-) / 1024 / 1024
-```
-
-Argo CD memory usage:
-
-```
-sum(
-  container_memory_working_set_bytes{
-    namespace="argocd",
-    container!="",
-    image!=""
-  }
-) / 1024 / 1024
-```
-
-Observability stack memory usage:
-
-```
-sum(
-  container_memory_working_set_bytes{
-    namespace="monitoring",
-    container!="",
-    image!=""
-  }
-) / 1024 / 1024
-```
-
-These queries make it possible to compare configured resource budgets with actual runtime consumption.
-
-### Host-Level Monitoring
-
-The complete Kind node footprint can also be inspected from the Docker host:
-
-```bash
-docker stats --no-stream \
-  devsecops-local-control-plane \
-  devsecops-local-worker
-```
-
-This provides a useful host-level view because it includes Kubernetes system components running inside the Kind nodes.
-
-### Local vs Cloud Environment
-
-Resource constraints applied to the local environment are development-specific.
-
-The future GCP environment will use separate configuration appropriate for GKE and cloud infrastructure.
-
-The local profile prioritizes:
-
-- low resource consumption
-- reproducibility
-- functional validation
-- GitOps workflow testing
-- incremental platform development
-
-The cloud profile will instead focus on:
-
-- scalability
-- availability
-- persistent storage
-- production-like observability
-- autoscaling
-- cloud-native integrations
-- security and operational resilience
 
 ## Prerequisites
 
-The following tools must be installed before creating the local Kubernetes cluster:
+Required tools:
 
 * Docker
 * Kind
 * kubectl
 
-Verify the installation:
+Verify:
 
 ```bash
 docker version
@@ -244,63 +102,67 @@ kind version
 kubectl version --client
 ```
 
-Verify that Docker is working correctly:
+## Lifecycle
 
-```bash
-docker run --rm hello-world
-```
+The repository-level `Makefile` is the recommended interface.
 
-## Directory Structure
+Implementation details are documented in [scripts/README.md](../../scripts/README.md).
 
-```text
-local/
-└── kind/
-    ├── README.md
-    └── cluster.yaml
-```
+### Bootstrap
 
-`cluster.yaml` contains the declarative configuration of the local Kind cluster.
-
-## Cluster Topology
-
-The initial local cluster contains two Kubernetes nodes:
-
-```text
-devsecops-local
-├── control-plane
-└── worker
-```
-
-The control-plane node runs Kubernetes control-plane components.
-
-The worker node is used for application workloads.
-
-This topology provides a simple but more realistic environment than a single-node cluster and allows basic Kubernetes scheduling behaviour to be tested.
-
-The cluster topology may be extended later if additional nodes are required for scheduling, autoscaling or failure-testing scenarios.
-
-## Create the Cluster
-
-The local Kind cluster should normally be created through the repository-level
-`Makefile`:
+Create the cluster or restore it when it already exists:
 
 ```bash
 make bootstrap
 ```
 
-The `Makefile` delegates cluster lifecycle operations to `scripts/kind-cluster.sh`, which applies the required local cluster
-configuration and waits for the Kubernetes nodes to become ready.
+### Start
 
-Direct Kind commands are intended only for troubleshooting or development of
-the cluster automation.
-
-## Verify the Kubernetes Context
-
-Always verify the active Kubernetes context before performing cluster operations:
+Restore an existing stopped cluster:
 
 ```bash
-kubectl config current-context
+make up
 ```
+
+Starting the cluster:
+
+1. starts existing Kind node containers
+2. configures local JFrog registry access
+3. refreshes Kind kubeconfig
+4. waits for the Kubernetes API
+5. waits until all nodes are `Ready`
+
+### Stop
+
+Stop the cluster while preserving its state:
+
+```bash
+make down
+```
+
+This releases most Kind runtime resources without deleting the cluster.
+
+### Status
+
+```bash
+make status
+```
+
+### Delete
+
+Completely remove the cluster:
+
+```bash
+make cluster-delete
+```
+
+Deletion should be used only when a full environment recreation is required.
+
+## Kubeconfig Restoration
+
+Kind nodes are Docker containers and can survive while the local Kubernetes context is missing from the runner kubeconfig.
+
+For this reason, cluster startup refreshes the Kind kubeconfig before Kubernetes access is validated.
 
 Expected context:
 
@@ -308,475 +170,157 @@ Expected context:
 kind-devsecops-local
 ```
 
-This verification is particularly important before commands that modify or delete Kubernetes resources.
+Verify:
 
-## Verify Cluster Nodes
+```bash
+kubectl config current-context
+```
 
-Check the cluster nodes:
+The lifecycle automation is designed so a stopped existing cluster can be restored without relying on previously persisted kubeconfig state.
+
+## Local Registry Integration
+
+Kind pulls CI-produced application images from the local JFrog Container Registry.
+
+Set the registry address through:
+
+```bash
+export JFROG_REGISTRY="<host>:8082"
+```
+
+Registry configuration is applied automatically to each Kind node when the cluster is created or started.
+
+The configuration is stored inside each Kind node under:
+
+```text
+/etc/containerd/certs.d/<registry>/hosts.toml
+```
+
+The local environment uses HTTP registry connectivity for development.
+
+This configuration must not be reused as the cloud security model.
+
+Registry connectivity and workload authentication remain separate:
+
+```text
+        Kind containerd
+              │
+              ▼
+       registry connectivity
+
+       imagePullSecret
+              │
+              ▼
+      registry authentication
+```
+
+Credentials are provided to workloads through Kubernetes Secrets and are not stored in the Kind registry configuration.
+
+## Resource Model
+
+The workstation is intentionally operated using resource profiles.
+
+Typical Kubernetes development profile:
+
+```text
+Kind        ON
+SonarQube   OFF
+JFrog       OFF
+```
+
+For tooling work:
+
+```text
+Kind        OFF
+SonarQube   ON or JFrog ON
+```
+
+The cluster should normally be stopped rather than deleted when switching profiles.
+
+See [Local DevSecOps Tooling](../tooling/README.md).
+
+## CI/CD Integration
+
+The local Kind cluster is the final deployment target of the validated local delivery workflow.
+
+```text
+             Source Commit
+                  │
+                  ▼
+             CI Validation
+                  │
+                  ▼
+                 JFrog
+                  │
+                  ▼
+          GitOps Promotion
+                  │
+                  ▼
+               Argo CD
+                  │
+                  ▼
+          Kind Kubernetes
+```
+
+A validated JFrog image can be pulled by both Kind nodes through the configured local registry integration.
+
+## Security
+
+The local environment follows the target security model where practical:
+
+* workloads run as non-root where supported
+* privilege escalation is restricted
+* Kubernetes RBAC follows least-privilege principles
+* credentials are not committed to Git
+* registry credentials use Kubernetes Secrets
+* immutable image versions are used for CI artifacts
+* resource requests and limits are configured
+* readiness and liveness probes are used
+* images are vulnerability-scanned before publication
+* desired state is managed declaratively
+
+## Quick Validation
+
+Verify context:
+
+```bash
+kubectl config current-context
+```
+
+Verify nodes:
 
 ```bash
 kubectl get nodes -o wide
 ```
 
-Expected result:
-
-```text
-NAME                           STATUS   ROLES
-devsecops-local-control-plane  Ready    control-plane
-devsecops-local-worker         Ready    <none>
-```
-
-Both nodes should have the `Ready` status.
-
-## Verify Kubernetes System Components
-
-Check the Kubernetes system Pods:
-
-```bash
-kubectl get pods -n kube-system
-```
-
-Core Kubernetes components should be in the `Running` state.
-
-Depending on the Kind and Kubernetes versions, this may include components such as:
-
-* CoreDNS
-* kube-proxy
-* local-path provisioner
-
-## Development Namespaces
-
-The platform uses the following namespaces:
-
-```text
-online-boutique
-argocd
-monitoring
-```
-
-Their intended responsibilities are:
-
-| Namespace         | Purpose                                          |
-| ----------------- | ------------------------------------------------ |
-| `online-boutique` | Online Boutique application workloads            |
-| `argocd`          | Argo CD and GitOps components                    |
-| `monitoring`      | Prometheus, Grafana and observability components |
-
-Platform namespaces are managed declaratively through the GitOps repository
-and reconciled by Argo CD. Manual namespace creation should only be used for
-temporary troubleshooting.
-
-Verify:
-
-```bash
-kubectl get namespaces
-```
-
-## Cluster Smoke Test
-
-A simple NGINX workload can be used to verify that the cluster can successfully schedule and expose workloads.
-
-Create a test deployment:
-
-```bash
-kubectl create deployment nginx \
-  --image=nginx \
-  --namespace online-boutique
-```
-
-Verify the Pod:
-
-```bash
-kubectl get pods \
-  --namespace online-boutique
-```
-
-The Pod should reach:
-
-```text
-Running
-```
-
-Expose the deployment:
-
-```bash
-kubectl expose deployment nginx \
-  --port=80 \
-  --namespace online-boutique
-```
-
-Verify the Service:
-
-```bash
-kubectl get services \
-  --namespace online-boutique
-```
-
-## Test Local Connectivity
-
-Forward the Kubernetes Service to the local workstation:
-
-```bash
-kubectl port-forward \
-  --namespace online-boutique \
-  service/nginx \
-  8080:80
-```
-
-Open:
-
-```text
-http://localhost:8080
-```
-
-The NGINX welcome page confirms that:
-
-```text
-Docker
-   ↓
-Kind
-   ↓
-Kubernetes
-   ↓
-Deployment
-   ↓
-Pod
-   ↓
-Service
-   ↓
-Port Forward
-```
-
-are functioning correctly.
-
-## Remove Smoke-Test Resources
-
-After verification, remove the temporary NGINX resources:
-
-```bash
-kubectl delete deployment nginx \
-  --namespace online-boutique
-```
-
-```bash
-kubectl delete service nginx \
-  --namespace online-boutique
-```
-
-Verify:
-
-```bash
-kubectl get all \
-  --namespace online-boutique
-```
-
-No NGINX resources should remain.
-
-## Inspect the Cluster
-
-Useful commands:
-
-Check all nodes:
-
-```bash
-kubectl get nodes -o wide
-```
-
-Check all namespaces:
-
-```bash
-kubectl get namespaces
-```
-
-Check resources in a namespace:
-
-```bash
-kubectl get all \
-  --namespace online-boutique
-```
-
-Check cluster information:
+Verify cluster:
 
 ```bash
 kubectl cluster-info
 ```
 
-Check Kubernetes contexts:
+Verify Argo CD-managed workloads:
 
 ```bash
-kubectl config get-contexts
+kubectl get applications -n argocd
+kubectl get pods -A
 ```
 
-Inspect a Pod:
+Detailed operational troubleshooting should be maintained under [docs/runbooks](../../docs/runbooks/README.md).
 
-```bash
-kubectl describe pod <pod-name> \
-  --namespace <namespace>
-```
+## Local vs GCP
 
-Inspect Pod logs:
-
-```bash
-kubectl logs <pod-name> \
-  --namespace <namespace>
-```
-
-## Cluster Lifecycle
-
-The local Kind cluster lifecycle is managed through the repository-level `Makefile`.
-
-The `Makefile` provides a stable developer interface while the underlying Kind and Docker operations are implemented in: `scripts/kind-cluster.sh`
-
-### Bootstrap
-
-Create the local cluster: `make bootstrap`
-
-If the cluster already exists but is stopped, the existing Kind node containers are started instead of creating a new cluster.
-
-The command waits until all Kubernetes nodes report the `Ready` condition.
-
-### Start
-
-Start an existing stopped cluster: `make up`
-
-Kind nodes are Docker containers, so stopping the local environment does not require deleting and recreating the cluster.
-
-### Stop
-
-Stop the cluster while preserving its state: `make down`
-
-This stops the Kind node containers and releases most resources consumed by the local Kubernetes environment.
-
-The cluster configuration and workloads remain available and can be restored with: `make up`
-
-This is particularly useful when running resource-intensive local tooling such as SonarQube or JFrog Container Registry.
-
-### Status
-
-Display Kind container and Kubernetes node status: `make status`
-
-### Delete
-
-Delete the local cluster completely: `make cluster-delete`
-
-Unlike `make down`, this operation removes the Kind cluster and should only be used when a full environment recreation is required.
-
-### Direct Script Usage
-
-The lifecycle script can also be executed directly:
-
-```bash
-./scripts/kind-cluster.sh create
-./scripts/kind-cluster.sh start
-./scripts/kind-cluster.sh stop
-./scripts/kind-cluster.sh status
-./scripts/kind-cluster.sh delete
-```
-
-The Makefile remains the recommended developer-facing interface.
-
-### Resource-Constrained Workflow
-
-The local environment is designed for a workstation with limited memory.
-
-A typical workflow is:
+The local and cloud environments should reuse the same application artifacts, Helm configuration and GitOps model wherever practical.
 
 ```text
-Kubernetes development
-        ↓
-     make up
-
-Tooling development
-        ↓
-    make down
-        |
-        +--> SonarQube
-        +--> JFrog Container Registry
-
-Return to Kubernetes
-        ↓
-     make up
+        LOCAL                         CLOUD
+          │                             │
+          ▼                             ▼
+         Kind                           GKE
+          │                             │
+     Argo CD                        Argo CD
+          │                             │
+ Online Boutique                 Online Boutique
 ```
 
-Stopping the Kind cluster instead of deleting it allows the environment to be resumed without rebuilding the entire platform.
-
-The long-term target workflow is:
-
-```text
-cluster.yaml
-      ↓
-Kind
-      ↓
-Argo CD
-      ↓
-GitOps Repository
-      ↓
-Helm
-      ↓
-Platform + Online Boutique
-```
-
-## Local Container Registry
-
-The Kind cluster supports pulling container images from the local JFrog Container Registry.
-
-Registry access is configured automatically by `scripts/kind-cluster.sh` on every Kind node using containerd registry host configuration.
-
-### Registry Configuration
-
-Set the local registry address before creating or starting the cluster:
-
-```bash
-export JFROG_REGISTRY="<host>:8082"
-
-make bootstrap
-```
-
-For an existing cluster:
-
-```bash
-export JFROG_REGISTRY="<host>:8082"
-
-make up
-```
-
-The lifecycle script applies the registry configuration to every Kind node under:
-`/etc/containerd/certs.d/<registry>/hosts.toml`
-
-The configuration allows the Kind container runtime to resolve and pull images from the local JFrog registry over HTTP.
-
-The HTTP registry configuration is intended only for local development. The future cloud environment should use TLS-secured registry access.
-
-### Cluster Lifecycle
-
-Registry configuration is reapplied when the Kind cluster is created or started.
-
-This keeps registry access consistent across the normal cluster lifecycle:
-
-```text
-  make bootstrap
-        ↓
-configure registry
-        ↓
-  cluster ready
-
-    make down
-        ↓
- cluster stopped
-
-    make up
-        ↓
-configure registry
-        ↓
- cluster ready
-```
-
-The registry address is provided through `JFROG_REGISTRY` and is not hardcoded in the repository because it depends on the local workstation network configuration.
-
-### Authentication
-
-Registry credentials are not stored in the Kind node configuration or committed to Git.
-
-Container runtime connectivity and registry authentication are separate concerns:
-
-```text
-Kind containerd configuration
-             ↓
-    registry connectivity
-
-Kubernetes imagePullSecret
-             ↓
-  registry authentication
-```
-
-Private image authentication is provided to Kubernetes workloads through `imagePullSecrets`.
-
-The corresponding Kubernetes Secret is created at runtime and must not contain credentials committed to the GitOps repository.
-
-### Validation
-
-Registry connectivity can be validated directly through the Kind container runtime.
-
-Example:
-
-```bash
-docker exec <kind-node> \
-  crictl pull \
-  --creds "<username>:<token>" \
-  "<registry>/online-boutique-docker-local/productcatalogservice:<tag>"
-```
-
-The local integration has been validated on both the Kind control-plane and worker nodes using an image published by the application CI pipeline to JFrog.
-
-## Local vs GCP Environment
-
-The local Kind cluster is intended for daily development and integration testing.
-
-The final cloud environment will use Google Kubernetes Engine.
-
-```text
-LOCAL
-
-Kind
-├── Online Boutique
-├── Helm
-├── Argo CD
-└── Observability
-
-
-CLOUD
-
-GKE
-├── Online Boutique
-├── Helm
-├── Argo CD
-└── Observability
-```
-
-Where possible, both environments should use the same:
-
-* application containers
-* Helm charts
-* GitOps structure
-* Kubernetes manifests
-* security configuration
-* observability configuration
-
-Cloud-specific functionality such as GCP IAM, Workload Identity Federation, Cloud NAT, Cloud Armor and Secret Manager will be introduced during the GCP integration phase.
-
-## Security Principles
-
-The local environment should follow the same security principles intended for GKE where technically possible.
-
-These include:
-
-* workloads running as non-root
-* least-privilege RBAC
-* NetworkPolicies
-* no credentials committed to Git
-* immutable container image versions
-* resource requests and limits
-* readiness and liveness probes
-* vulnerability scanning
-* declarative configuration
-
-## Current Focus
-
-The current local integration milestone is completing the artifact delivery
-path:
-
-```text
- Application CI
-       ↓
-     JFrog
-       ↓
-GitOps promotion
-       ↓
-    Argo CD
-       ↓
-Kind Kubernetes
-```
-
-After the end-to-end delivery flow is validated, the next local platform work
-will focus on Kubernetes workload reliability before the platform is migrated
-to GKE.
+Cloud-specific networking, IAM, secrets management and production-grade reliability controls belong to the GCP environment rather than the local Kind profile.

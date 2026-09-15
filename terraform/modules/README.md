@@ -1,15 +1,51 @@
 # Terraform Modules
 
-Reusable Terraform modules used by the DevSecOps GCP platform.
+Reusable Terraform modules for the target DevSecOps GCP platform.
 
-Planned modules:
+## Table of Contents
 
-- network
-- nat
-- iam
-- gke
-- compute
-- secret-manager
-- dns
+* [Planned Modules](#planned-modules)
+* [Module Responsibilities](#module-responsibilities)
+* [Environment Composition](#environment-composition)
+* [Design Principles](#design-principles)
 
-Modules will be implemented incrementally as infrastructure components are introduced.
+## Planned Modules
+
+The target module set includes:
+
+* `network`
+* `nat`
+* `iam`
+* `gke`
+* `compute`
+* `secret-manager`
+* `dns`
+
+Modules should be implemented incrementally as the corresponding GCP infrastructure is introduced.
+
+## Module Responsibilities
+
+Modules should encapsulate reusable infrastructure resources and expose clear inputs and outputs.
+
+Environment-specific values should not be hardcoded inside reusable modules.
+
+## Environment Composition
+
+Modules are composed by environment configuration under:
+
+```text
+terraform/environments/
+```
+
+The current target environment is documented in [portfolio/README.md](../environments/portfolio/README.md).
+
+## Design Principles
+
+Terraform modules should:
+
+* have a focused responsibility
+* avoid hidden environment assumptions
+* expose required outputs explicitly
+* use least-privilege IAM
+* support reproducible environment creation
+* separate reusable logic from environment-specific configuration
