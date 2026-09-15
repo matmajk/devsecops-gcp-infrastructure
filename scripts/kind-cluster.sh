@@ -261,6 +261,7 @@ start_cluster() {
 
     if cluster_is_running; then
         info "Cluster '${CLUSTER_NAME}' is already running."
+        refresh_kubeconfig
         configure_jfrog_registry
         wait_for_cluster
         return
@@ -273,6 +274,7 @@ start_cluster() {
 
     docker start "${containers[@]}" >/dev/null
 
+    refresh_kubeconfig
     configure_jfrog_registry
     wait_for_cluster
 }
