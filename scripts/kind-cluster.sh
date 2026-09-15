@@ -348,6 +348,10 @@ refresh_kubeconfig() {
         >/dev/null
 
     info "Kubeconfig refreshed."
+
+    kubectl config use-context "${KUBE_CONTEXT}" > /dev/null
+
+    info "Kubernetes context set to '${KUBE_CONTEXT}'."
 }
 
 
