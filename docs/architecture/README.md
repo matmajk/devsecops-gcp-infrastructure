@@ -8,6 +8,7 @@ This directory is intended for cross-component architecture material that is bro
 
 * [Scope](#scope)
 * [Architecture Areas](#architecture-areas)
+* [Architecture Documents](#architecture-documents)
 * [Existing Component Documentation](#existing-component-documentation)
 * [Documentation Principles](#documentation-principles)
 
@@ -35,6 +36,14 @@ Relevant architecture areas include:
 * GitOps deployment flow
 * security architecture
 * observability architecture
+* GCP cost architecture and cost-control model
+
+## Architecture Documents
+
+Current cross-component architecture documentation:
+
+- [GCP Cost Model](gcp-cost-model.md) — centralized GCP pricing assumptions, infrastructure cost estimates, cost risks, optimization strategy and destroy-cost model for the target cloud architecture.
+
 
 ## Existing Component Documentation
 
