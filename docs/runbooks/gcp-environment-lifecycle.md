@@ -13,7 +13,6 @@ The primary goals are predictable infrastructure changes, cost control and compl
 * [Apply](#apply)
 * [Destroy](#destroy)
 * [Destroy Preview](#destroy-preview)
-* [Cost Model](#cost-model)
 * [Expected Residual Infrastructure](#expected-residual-infrastructure)
 
 ## Prerequisites
@@ -54,6 +53,12 @@ Recreate when required
 ```
 
 Infrastructure destruction and recreation are treated as normal parts of the portfolio environment lifecycle.
+
+The portfolio environment is designed to be disposable so that billable
+infrastructure can be removed when it is not required.
+
+Current cost assumptions and estimated runtime costs are maintained centrally
+in [GCP Cost Model](../architecture/gcp-cost-model.md).
 
 ## Preflight
 
@@ -111,21 +116,6 @@ make gcp-show-destroy-plan
 ```
 
 This is recommended whenever the environment contains important stateful resources.
-
-## Cost Model
-
-Every infrastructure change should document:
-
-```text
-Creation:
-Runtime:
-Destroyed:
-Residual:
-```
-
-Paid resources should only remain active while they are required for development, validation or demonstration.
-
-The complete portfolio environment is designed to be disposable.
 
 ## Expected Residual Infrastructure
 
