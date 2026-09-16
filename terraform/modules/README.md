@@ -11,17 +11,18 @@ Reusable Terraform modules for the target DevSecOps GCP platform.
 
 ## Planned Modules
 
-The target module set includes:
+Modules are introduced incrementally as the corresponding GCP infrastructure is implemented.
 
-* `network`
-* `nat`
-* `iam`
-* `gke`
-* `compute`
-* `secret-manager`
-* `dns`
+Implemented:
+- [network](network/README.md) — custom VPC, regional subnet, GKE secondary ranges and Cloud Router
 
-Modules should be implemented incrementally as the corresponding GCP infrastructure is introduced.
+Planned:
+- NAT
+- IAM
+- GKE
+- compute
+- Secret Manager
+- DNS
 
 ## Module Responsibilities
 

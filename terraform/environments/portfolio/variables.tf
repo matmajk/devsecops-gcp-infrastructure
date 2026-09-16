@@ -19,3 +19,28 @@ variable "environment" {
     error_message = "Environment must start with a lowercase letter and contain only lowercase letters, numbers, or hyphens."
   }
 }
+
+variable "network_cidrs" {
+  description = "IPv4 CIDR ranges used by the portfolio network and GKE."
+  type = object({
+    subnet   = string
+    pods     = string
+    services = string
+  })
+
+  default = {
+    subnet   = "10.10.0.0/20"
+    pods     = "10.20.0.0/16"
+    services = "10.30.0.0/20"
+  }
+
+  validation {
+    condition = (
+      can(cidrhost(var.network_cidrs.subnet, 0)) &&
+      can(cidrhost(var.network_cidrs.pods, 0)) &&
+      can(cidrhost(var.network_cidrs.services, 0))
+    )
+
+    error_message = "All network CIDR values must be valid CIDR ranges."
+  }
+}

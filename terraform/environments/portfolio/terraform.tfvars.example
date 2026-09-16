@@ -1,3 +1,9 @@
 project_id  = "<GCP_PROJECT_ID>"
 region      = "europe-central2"
 environment = "portfolio"
+
+network_cidrs = {
+  subnet   = "10.10.0.0/20"
+  pods     = "10.20.0.0/16"
+  services = "10.30.0.0/20"
+}
