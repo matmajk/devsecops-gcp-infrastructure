@@ -14,11 +14,12 @@ Reusable Terraform modules for the target DevSecOps GCP platform.
 Modules are introduced incrementally as the corresponding GCP infrastructure is implemented.
 
 Implemented:
-- [network](network/README.md) — custom VPC, regional subnet, GKE secondary ranges and Cloud Router
+- [project-services](project-services/README.md) — explicit Google Cloud API dependencies for the portfolio project
+- [iam](iam/README.md) — platform identities and least-privilege IAM bindings
+- [network](network/README.md) — custom VPC, regional subnet, GKE secondary ranges, VPC Flow Logs and Cloud Router
 
 Planned:
 - NAT
-- IAM
 - GKE
 - compute
 - Secret Manager
