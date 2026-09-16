@@ -42,3 +42,13 @@ output "router_name" {
   description = "Name of the portfolio Cloud Router."
   value       = module.network.router_name
 }
+
+output "enabled_project_services" {
+  description = "Google Cloud APIs managed for the portfolio project."
+  value       = module.project_services.enabled_services
+}
+
+output "gke_node_service_account_email" {
+  description = "Service account used by GKE worker nodes."
+  value       = module.iam.gke_node_service_account_email
+}

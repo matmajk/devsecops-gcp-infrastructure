@@ -1,11 +1,19 @@
-locals {
-  name_prefix = "devsecops-${var.environment}"
+module "project_services" {
+  source = "../../modules/project-services"
 
-  common_labels = {
-    environment = var.environment
-    managed_by  = "terraform"
-    project     = "devsecops-gcp-platform"
-  }
+  project_id = var.project_id
+  services   = local.project_services
+}
+
+module "iam" {
+  source = "../../modules/iam"
+
+  project_id  = var.project_id
+  name_prefix = local.name_prefix
+
+  depends_on = [
+    module.project_services
+  ]
 }
 
 module "network" {
@@ -18,4 +26,8 @@ module "network" {
   subnet_cidr   = var.network_cidrs.subnet
   pods_cidr     = var.network_cidrs.pods
   services_cidr = var.network_cidrs.services
+
+  depends_on = [
+    module.project_services
+  ]
 }
