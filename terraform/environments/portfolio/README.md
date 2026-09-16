@@ -11,6 +11,7 @@ This environment will assemble reusable Terraform modules into the cloud infrast
 * [Responsibilities](#responsibilities)
 * [State](#state)
 * [Configuration Model](#configuration-model)
+* [Network Foundation](#network-foundation)
 * [Workflow](#workflow)
 * [Current Status](#current-status)
 
@@ -75,6 +76,22 @@ The state backend is created separately through [terraform/bootstrap](../../boot
 ```
 
 Environment-specific values should remain outside reusable module implementations.
+
+## Network Foundation
+
+The portfolio environment consumes the reusable [network module](../../modules/network/README.md).
+
+The default address plan is:
+
+| Purpose | CIDR |
+|---|---|
+| Nodes | `10.10.0.0/20` |
+| Pods | `10.20.0.0/16` |
+| Services | `10.30.0.0/20` |
+
+The network uses a custom VPC, explicit GKE secondary ranges and Private Google Access.
+
+Cloud NAT will be introduced together with private GKE.
 
 ## Workflow
 
