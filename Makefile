@@ -5,7 +5,8 @@
 ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 TERRAFORM ?= terraform
-TERRAFORM_DIR ?= terraform/environments/portfolio
+TERRAFORM_PORTFOLIO_DIR ?= terraform/environments/portfolio
+TERRAFORM_BOOTSTRAP_DIR ?= terraform/bootstrap
 
 KIND_CLUSTER_NAME ?= devsecops-local
 KIND_CONFIG ?= local/kind/cluster.yaml
@@ -39,8 +40,8 @@ help:
 	@echo "Terraform:"
 	@echo "  terraform-fmt          Format Terraform files"
 	@echo "  terraform-fmt-check    Check Terraform formatting"
-	@echo "  terraform-init-local   Initialize Terraform without backend"
-	@echo "  terraform-validate     Validate Terraform configuration"
+	@echo "  terraform-init-local   Initialize Terraform roots without remote backend"
+	@echo "  terraform-validate     Validate all Terraform root configurations"
 	@echo
 	@echo "Local Kubernetes:"
 	@echo "  bootstrap              Create local Kubernetes infrastructure"
@@ -89,13 +90,17 @@ terraform-fmt-check:
 
 .PHONY: terraform-init-local
 terraform-init-local:
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) init \
+	$(TERRAFORM) -chdir=$(TERRAFORM_BOOTSTRAP_DIR) init \
+		-backend=false \
+		-input=false
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) init \
 		-backend=false \
 		-input=false
 
 .PHONY: terraform-validate
 terraform-validate: terraform-init-local
-	$(TERRAFORM) -chdir=$(TERRAFORM_DIR) validate
+	$(TERRAFORM) -chdir=$(TERRAFORM_BOOTSTRAP_DIR) validate
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) validate
 
 
 # -----------------------------------------------------------------------------
