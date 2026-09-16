@@ -2,6 +2,8 @@
 
 Operational procedures and troubleshooting guides for the DevSecOps platform.
 
+Runbooks are intended for repeatable operational actions rather than architecture or component design documentation.
+
 ## Table of Contents
 
 * [Purpose](#purpose)
@@ -36,7 +38,12 @@ Some operational procedures currently remain close to their components:
 * [Self-hosted runner](../../local/runner/README.md)
 * [Infrastructure scripts](../../scripts/README.md)
 
-Detailed troubleshooting can be extracted from those documents into dedicated runbooks as the platform grows.
+Dedicated runbooks currently include:
+
+* [GCP Environment Lifecycle](gcp-environment-lifecycle.md)
+
+Detailed troubleshooting can be extracted from component documentation into
+additional dedicated runbooks as the platform grows.
 
 ## Candidate Runbooks
 

@@ -8,6 +8,12 @@ TERRAFORM ?= terraform
 TERRAFORM_PORTFOLIO_DIR ?= terraform/environments/portfolio
 TERRAFORM_BOOTSTRAP_DIR ?= terraform/bootstrap
 
+TERRAFORM_BACKEND_CONFIG ?= backend.hcl
+TERRAFORM_VAR_FILE ?= terraform.tfvars
+TERRAFORM_PLAN_FILE ?= tfplan
+TERRAFORM_DESTROY_PLAN_FILE ?= destroy.tfplan
+TERRAFORM_LOCK_TIMEOUT ?= 60s
+
 KIND_CLUSTER_NAME ?= devsecops-local
 KIND_CONFIG ?= local/kind/cluster.yaml
 
@@ -42,6 +48,17 @@ help:
 	@echo "  terraform-fmt-check    Check Terraform formatting"
 	@echo "  terraform-init-local   Initialize Terraform roots without remote backend"
 	@echo "  terraform-validate     Validate all Terraform root configurations"
+	@echo
+	@echo "GCP:"
+	@echo "  gcp-preflight          Verify required local GCP configuration"
+	@echo "  gcp-init               Initialize the portfolio GCS backend"
+	@echo "  gcp-plan               Create and save a Terraform execution plan"
+	@echo "  gcp-show-plan          Show the saved Terraform execution plan"
+	@echo "  gcp-apply              Apply the previously saved Terraform plan"
+	@echo "  gcp-destroy-plan       Create and save a Terraform destroy plan"
+	@echo "  gcp-show-destroy-plan  Show the saved Terraform destroy plan"
+	@echo "  gcp-destroy            Destroy the complete portfolio environment"
+	@echo "  gcp-clean-plans        Remove saved Terraform plan files"
 	@echo
 	@echo "Local Kubernetes:"
 	@echo "  bootstrap              Create local Kubernetes infrastructure"
@@ -113,6 +130,95 @@ fmt: terraform-fmt
 .PHONY: validate
 validate: terraform-validate
 
+# -----------------------------------------------------------------------------
+# GCP Lifecycle
+# -----------------------------------------------------------------------------
+
+.PHONY: gcp-preflight
+gcp-preflight:
+	@test -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_BACKEND_CONFIG)" || { \
+		echo "ERROR: Missing $(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_BACKEND_CONFIG)"; \
+		echo "Create it from backend.hcl.example before using GCP lifecycle targets."; \
+		exit 1; \
+	}
+	@test -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_VAR_FILE)" || { \
+		echo "ERROR: Missing $(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_VAR_FILE)"; \
+		echo "Create it from terraform.tfvars.example before using GCP lifecycle targets."; \
+		exit 1; \
+	}
+
+.PHONY: gcp-init
+gcp-init: gcp-preflight
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) init \
+		-backend-config=$(TERRAFORM_BACKEND_CONFIG) \
+		-input=false
+
+.PHONY: gcp-plan
+gcp-plan: gcp-init
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) plan \
+		-input=false \
+		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
+		-var-file=$(TERRAFORM_VAR_FILE) \
+		-out=$(TERRAFORM_PLAN_FILE)
+
+.PHONY: gcp-show-plan
+gcp-show-plan:
+	@test -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_PLAN_FILE)" || { \
+		echo "ERROR: No saved Terraform plan found."; \
+		echo "Run 'make gcp-plan' first."; \
+		exit 1; \
+	}
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) show \
+		$(TERRAFORM_PLAN_FILE)
+
+.PHONY: gcp-apply
+gcp-apply:
+	@test -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_PLAN_FILE)" || { \
+		echo "ERROR: No saved Terraform plan found."; \
+		echo "Run 'make gcp-plan' and review it before applying."; \
+		exit 1; \
+	}
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) apply \
+		-input=false \
+		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
+		$(TERRAFORM_PLAN_FILE)
+	@rm -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_PLAN_FILE)"
+
+.PHONY: gcp-destroy-plan
+gcp-destroy-plan: gcp-init
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) plan \
+		-destroy \
+		-input=false \
+		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
+		-var-file=$(TERRAFORM_VAR_FILE) \
+		-out=$(TERRAFORM_DESTROY_PLAN_FILE)
+
+.PHONY: gcp-show-destroy-plan
+gcp-show-destroy-plan:
+	@test -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_DESTROY_PLAN_FILE)" || { \
+		echo "ERROR: No saved Terraform destroy plan found."; \
+		echo "Run 'make gcp-destroy-plan' first."; \
+		exit 1; \
+	}
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) show \
+		$(TERRAFORM_DESTROY_PLAN_FILE)
+
+.PHONY: gcp-destroy
+gcp-destroy: gcp-init
+	@echo
+	@echo "WARNING: This will destroy all resources managed by the portfolio environment."
+	@echo "The Terraform bootstrap state bucket is not managed by this root module and will remain."
+	@echo
+	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) destroy \
+		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
+		-var-file=$(TERRAFORM_VAR_FILE)
+	@rm -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_PLAN_FILE)"
+	@rm -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_DESTROY_PLAN_FILE)"
+
+.PHONY: gcp-clean-plans
+gcp-clean-plans:
+	@rm -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_PLAN_FILE)"
+	@rm -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_DESTROY_PLAN_FILE)"
 
 # -----------------------------------------------------------------------------
 # Local Kubernetes Lifecycle
