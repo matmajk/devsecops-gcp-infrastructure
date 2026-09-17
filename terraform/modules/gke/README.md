@@ -155,18 +155,18 @@ remove_default_node_pool = true
 The creation sequence is:
 
 ```text
-create GKE cluster
-        │
-        ▼
-create temporary default node pool
-        │
-        ▼
-cluster becomes operational
-        │
-        ▼
-remove temporary default node pool
-        │
-        ▼
+           create GKE cluster
+                   │
+                   ▼
+  create temporary default node pool
+                   │
+                   ▼
+      cluster becomes operational
+                   │
+                   ▼
+   remove temporary default node pool
+                   │
+                   ▼
 create Terraform-managed primary node pool
 ```
 
