@@ -16,6 +16,32 @@ resource "google_container_cluster" "this" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
+  # GKE requires an initial default node pool during cluster creation even
+  # when remove_default_node_pool is enabled. Keep the temporary pool aligned
+  # with the portfolio sizing to avoid unnecessary quota consumption.
+  node_config {
+    machine_type = var.machine_type
+
+    disk_type    = "pd-balanced"
+    disk_size_gb = var.node_disk_size_gb
+
+    service_account = var.node_service_account_email
+
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+
+    metadata = {
+      disable-legacy-endpoints = "true"
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [
+      node_config,
+    ]
+  }
+
   deletion_protection = false
 
   datapath_provider     = "ADVANCED_DATAPATH"
