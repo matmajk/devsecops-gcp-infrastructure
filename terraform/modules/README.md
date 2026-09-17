@@ -17,10 +17,10 @@ Implemented:
 - [project-services](project-services/README.md) — explicit Google Cloud API dependencies for the portfolio project
 - [iam](iam/README.md) — platform identities and least-privilege IAM bindings
 - [network](network/README.md) — custom VPC, regional subnet, GKE secondary ranges, VPC Flow Logs and Cloud Router
+- [nat](nat/README.md) — outbound connectivity for private GCP workloads
+- [gke](gke/README.md) — private regional GKE Standard cluster and worker node pool
 
 Planned:
-- NAT
-- GKE
 - compute
 - Secret Manager
 - DNS

@@ -31,3 +31,42 @@ module "network" {
     module.project_services
   ]
 }
+
+module "nat" {
+  source = "../../modules/nat"
+
+  project_id  = var.project_id
+  region      = var.region
+  name_prefix = local.name_prefix
+
+  router_name   = module.network.router_name
+  subnetwork_id = module.network.subnetwork_id
+}
+
+module "gke" {
+  source = "../../modules/gke"
+
+  project_id  = var.project_id
+  region      = var.region
+  name_prefix = local.name_prefix
+
+  network_id    = module.network.network_id
+  subnetwork_id = module.network.subnetwork_id
+
+  pods_secondary_range_name     = module.network.pods_secondary_range_name
+  services_secondary_range_name = module.network.services_secondary_range_name
+
+  node_service_account_email = module.iam.gke_node_service_account_email
+
+  node_locations                = var.gke_config.node_locations
+  machine_type                  = var.gke_config.machine_type
+  node_disk_type                = var.gke_config.node_disk_type
+  node_disk_size_gb             = var.gke_config.node_disk_size_gb
+  master_ipv4_cidr              = var.gke_config.master_ipv4_cidr
+  control_plane_authorized_cidr = var.gke_config.control_plane_authorized_cidr
+
+  depends_on = [
+    module.nat,
+    module.project_services,
+  ]
+}
