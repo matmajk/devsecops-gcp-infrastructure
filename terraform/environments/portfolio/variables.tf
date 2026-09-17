@@ -44,3 +44,23 @@ variable "network_cidrs" {
     error_message = "All network CIDR values must be valid CIDR ranges."
   }
 }
+
+variable "gke_config" {
+  description = "Configuration of the portfolio GKE cluster."
+  type = object({
+    node_locations                = list(string)
+    machine_type                  = string
+    node_disk_size_gb             = number
+    master_ipv4_cidr              = string
+    control_plane_authorized_cidr = string
+  })
+
+  validation {
+    condition = (
+      can(cidrhost(var.gke_config.master_ipv4_cidr, 0)) &&
+      can(cidrhost(var.gke_config.control_plane_authorized_cidr, 0))
+    )
+
+    error_message = "GKE control-plane CIDR values must be valid CIDR ranges."
+  }
+}

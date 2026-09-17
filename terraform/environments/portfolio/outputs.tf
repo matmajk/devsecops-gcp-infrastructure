@@ -52,3 +52,23 @@ output "gke_node_service_account_email" {
   description = "Service account used by GKE worker nodes."
   value       = module.iam.gke_node_service_account_email
 }
+
+output "gke_cluster_name" {
+  description = "Name of the portfolio GKE cluster."
+  value       = module.gke.cluster_name
+}
+
+output "gke_cluster_location" {
+  description = "Location of the portfolio GKE cluster."
+  value       = module.gke.cluster_location
+}
+
+output "gke_node_pool_name" {
+  description = "Name of the primary GKE node pool."
+  value       = module.gke.node_pool_name
+}
+
+output "cloud_nat_name" {
+  description = "Name of the Cloud NAT configuration."
+  value       = module.nat.name
+}

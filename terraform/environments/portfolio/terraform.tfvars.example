@@ -7,3 +7,18 @@ network_cidrs = {
   pods     = "10.20.0.0/16"
   services = "10.30.0.0/20"
 }
+
+gke_config = {
+  node_locations = [
+    "europe-central2-a",
+    "europe-central2-b",
+    "europe-central2-c",
+  ]
+
+  machine_type      = "e2-medium"
+  node_disk_size_gb = 30
+
+  master_ipv4_cidr = "172.16.0.0/28"
+
+  control_plane_authorized_cidr = "<YOUR_PUBLIC_IP>/32"
+}
