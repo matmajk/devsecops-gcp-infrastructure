@@ -48,6 +48,21 @@ variable "machine_type" {
   type        = string
 }
 
+variable "node_disk_type" {
+  description = "Persistent Disk type used for GKE worker node boot disks."
+  type        = string
+
+  validation {
+    condition = contains([
+      "pd-standard",
+      "pd-balanced",
+      "pd-ssd",
+    ], var.node_disk_type)
+
+    error_message = "node_disk_type must be pd-standard, pd-balanced, or pd-ssd."
+  }
+}
+
 variable "node_disk_size_gb" {
   description = "Persistent disk size assigned to each GKE worker node."
   type        = number

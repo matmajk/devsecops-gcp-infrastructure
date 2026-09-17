@@ -60,6 +60,7 @@ module "gke" {
 
   node_locations                = var.gke_config.node_locations
   machine_type                  = var.gke_config.machine_type
+  node_disk_type                = var.gke_config.node_disk_type
   node_disk_size_gb             = var.gke_config.node_disk_size_gb
   master_ipv4_cidr              = var.gke_config.master_ipv4_cidr
   control_plane_authorized_cidr = var.gke_config.control_plane_authorized_cidr

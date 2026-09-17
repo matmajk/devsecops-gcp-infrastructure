@@ -22,7 +22,7 @@ resource "google_container_cluster" "this" {
   node_config {
     machine_type = var.machine_type
 
-    disk_type    = "pd-balanced"
+    disk_type    = var.node_disk_type
     disk_size_gb = var.node_disk_size_gb
 
     service_account = var.node_service_account_email
@@ -87,7 +87,7 @@ resource "google_container_node_pool" "primary" {
   node_config {
     machine_type = var.machine_type
 
-    disk_type    = "pd-balanced"
+    disk_type    = var.node_disk_type
     disk_size_gb = var.node_disk_size_gb
 
     image_type = "COS_CONTAINERD"

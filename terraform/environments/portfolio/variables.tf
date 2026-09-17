@@ -50,6 +50,7 @@ variable "gke_config" {
   type = object({
     node_locations                = list(string)
     machine_type                  = string
+    node_disk_type                = string
     node_disk_size_gb             = number
     master_ipv4_cidr              = string
     control_plane_authorized_cidr = string
