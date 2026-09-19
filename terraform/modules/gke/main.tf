@@ -51,6 +51,14 @@ resource "google_container_cluster" "this" {
     channel = "REGULAR"
   }
 
+  maintenance_policy {
+    recurring_window {
+      start_time = "2026-09-20T02:00:00Z"
+      end_time   = "2026-09-20T06:00:00Z"
+      recurrence = "FREQ=WEEKLY;BYDAY=SU"
+    }
+  }
+
   ip_allocation_policy {
     cluster_secondary_range_name  = var.pods_secondary_range_name
     services_secondary_range_name = var.services_secondary_range_name
@@ -82,7 +90,14 @@ resource "google_container_node_pool" "primary" {
 
   node_locations = var.node_locations
 
-  node_count = 1
+  initial_node_count        = 1
+  ignore_node_count_changes = true
+
+  autoscaling {
+    total_min_node_count = var.autoscaling_total_min_nodes
+    total_max_node_count = var.autoscaling_total_max_nodes
+    location_policy      = "BALANCED"
+  }
 
   node_config {
     machine_type = var.machine_type
@@ -114,7 +129,7 @@ resource "google_container_node_pool" "primary" {
   }
 
   upgrade_settings {
-    max_surge       = 1
-    max_unavailable = 0
+    max_surge       = 0
+    max_unavailable = 1
   }
 }

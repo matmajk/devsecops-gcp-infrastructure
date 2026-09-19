@@ -22,4 +22,9 @@ gke_config = {
   master_ipv4_cidr = "172.16.0.0/28"
 
   control_plane_authorized_cidr = "<YOUR_PUBLIC_IP>/32"
+
+  autoscaling = {
+    total_min_nodes = 3
+    total_max_nodes = 4
+  }
 }
