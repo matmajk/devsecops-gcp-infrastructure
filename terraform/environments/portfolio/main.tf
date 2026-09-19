@@ -58,12 +58,16 @@ module "gke" {
 
   node_service_account_email = module.iam.gke_node_service_account_email
 
-  node_locations                = var.gke_config.node_locations
-  machine_type                  = var.gke_config.machine_type
-  node_disk_type                = var.gke_config.node_disk_type
-  node_disk_size_gb             = var.gke_config.node_disk_size_gb
+  node_locations    = var.gke_config.node_locations
+  machine_type      = var.gke_config.machine_type
+  node_disk_type    = var.gke_config.node_disk_type
+  node_disk_size_gb = var.gke_config.node_disk_size_gb
+
   master_ipv4_cidr              = var.gke_config.master_ipv4_cidr
   control_plane_authorized_cidr = var.gke_config.control_plane_authorized_cidr
+
+  autoscaling_total_min_nodes = var.gke_config.autoscaling.total_min_nodes
+  autoscaling_total_max_nodes = var.gke_config.autoscaling.total_max_nodes
 
   depends_on = [
     module.nat,

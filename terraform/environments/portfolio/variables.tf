@@ -54,6 +54,11 @@ variable "gke_config" {
     node_disk_size_gb             = number
     master_ipv4_cidr              = string
     control_plane_authorized_cidr = string
+
+    autoscaling = object({
+      total_min_nodes = number
+      total_max_nodes = number
+    })
   })
 
   validation {

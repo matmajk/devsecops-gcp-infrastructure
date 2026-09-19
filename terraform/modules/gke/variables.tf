@@ -87,3 +87,27 @@ variable "control_plane_authorized_cidr" {
     error_message = "control_plane_authorized_cidr must be a valid CIDR range."
   }
 }
+
+variable "autoscaling_total_min_nodes" {
+  description = "Minimum total number of nodes across all node pool locations."
+  type        = number
+
+  validation {
+    condition     = var.autoscaling_total_min_nodes >= 1
+    error_message = "autoscaling_total_min_nodes must be at least 1."
+  }
+}
+
+variable "autoscaling_total_max_nodes" {
+  description = "Maximum total number of nodes across all node pool locations."
+  type        = number
+
+  validation {
+    condition = (
+      var.autoscaling_total_max_nodes >=
+      var.autoscaling_total_min_nodes
+    )
+
+    error_message = "autoscaling_total_max_nodes must be greater than or equal to autoscaling_total_min_nodes."
+  }
+}
