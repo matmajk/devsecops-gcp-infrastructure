@@ -25,6 +25,6 @@ gke_config = {
 
   autoscaling = {
     total_min_nodes = 3
-    total_max_nodes = 4
+    total_max_nodes = 6
   }
 }
