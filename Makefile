@@ -14,6 +14,11 @@ TERRAFORM_PLAN_FILE ?= tfplan
 TERRAFORM_DESTROY_PLAN_FILE ?= destroy.tfplan
 TERRAFORM_LOCK_TIMEOUT ?= 60s
 
+ANSIBLE_DIR := ansible
+ANSIBLE_VENV := $(ANSIBLE_DIR)/.venv
+ANSIBLE_PLAYBOOK := $(ANSIBLE_VENV)/bin/ansible-playbook
+ANSIBLE_GALAXY := $(ANSIBLE_VENV)/bin/ansible-galaxy
+
 KIND_CLUSTER_NAME ?= devsecops-local
 KIND_CONFIG ?= local/kind/cluster.yaml
 
@@ -49,6 +54,10 @@ help:
 	@echo "  terraform-init-local   Initialize Terraform roots without remote backend"
 	@echo "  terraform-validate     Validate all Terraform root configurations"
 	@echo
+	@echo "Ansible:"
+	@echo "  ansible-setup          Prepare the Ansible environment required for GCP platform bootstrap"
+	@echo "  ansible-check          Validate the GCP platform bootstrap Ansible playbook"
+	@echo "  gcp-bootstrap          Bootstrap Argo CD and GitOps on the GKE cluster"
 	@echo "GCP:"
 	@echo "  gcp-preflight          Verify required local GCP configuration"
 	@echo "  gcp-init               Initialize the portfolio GCS backend"
@@ -129,6 +138,37 @@ fmt: terraform-fmt
 
 .PHONY: validate
 validate: terraform-validate
+
+# -----------------------------------------------------------------------------
+# Ansible - GCP PLATFORM BOOTSTRAP
+# -----------------------------------------------------------------------------
+
+# =============================================================================
+# GCP PLATFORM BOOTSTRAP
+# =============================================================================
+
+.PHONY: ansible-setup ansible-check gcp-bootstrap
+
+ansible-setup:
+	python3 -m venv $(ANSIBLE_VENV)
+	$(ANSIBLE_VENV)/bin/python -m pip install --upgrade pip
+	$(ANSIBLE_VENV)/bin/python -m pip install -r $(ANSIBLE_DIR)/requirements.txt
+	$(ANSIBLE_GALAXY) collection install -r $(ANSIBLE_DIR)/requirements.yaml
+
+ansible-check:
+	@test -x "$(ANSIBLE_PLAYBOOK)" || \
+		( echo "ERROR: Ansible virtual environment not found. Run 'make ansible-setup' first."; exit 1 )
+	ANSIBLE_CONFIG="$(CURDIR)/$(ANSIBLE_DIR)/ansible.cfg" \
+		$(ANSIBLE_PLAYBOOK) \
+		$(ANSIBLE_DIR)/playbooks/gke-bootstrap.yaml \
+		--syntax-check
+
+gcp-bootstrap:
+	@test -x "$(ANSIBLE_PLAYBOOK)" || \
+		( echo "ERROR: Ansible virtual environment not found. Run 'make ansible-setup' first."; exit 1 )
+	ANSIBLE_CONFIG="$(CURDIR)/$(ANSIBLE_DIR)/ansible.cfg" \
+		$(ANSIBLE_PLAYBOOK) \
+		$(ANSIBLE_DIR)/playbooks/gke-bootstrap.yaml
 
 # -----------------------------------------------------------------------------
 # GCP Lifecycle
