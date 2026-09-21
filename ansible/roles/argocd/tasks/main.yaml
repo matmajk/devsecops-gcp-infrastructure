@@ -1,0 +1,109 @@
+---
+- name: Verify GKE API connectivity
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: kube-system
+  register: kube_system_namespace
+
+- name: Verify kube-system namespace
+  ansible.builtin.assert:
+    that:
+      - kube_system_namespace.resources | length > 0
+    fail_msg: kube-system namespace was not found
+
+- name: Verify GCP GitOps bootstrap project manifest exists
+  ansible.builtin.stat:
+    path: "{{ argocd_bootstrap_project_manifest }}"
+  register: argocd_bootstrap_project_file
+
+- name: Verify GCP GitOps root Application manifest exists
+  ansible.builtin.stat:
+    path: "{{ argocd_root_application_manifest }}"
+  register: argocd_root_application_file
+
+- name: Validate GCP GitOps bootstrap manifests
+  ansible.builtin.assert:
+    that:
+      - argocd_bootstrap_project_file.stat.exists
+      - argocd_root_application_file.stat.exists
+    fail_msg: >-
+      GCP GitOps bootstrap manifests were not found.
+      Verify gitops_repo_path and the configured manifest paths.
+
+- name: Create Argo CD namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ argocd_namespace }}"
+
+- name: Create temporary file for Argo CD installation manifest
+  ansible.builtin.tempfile:
+    state: file
+    suffix: "-argocd-install.yaml"
+  register: argocd_install_manifest
+
+- name: Download pinned Argo CD installation manifest
+  ansible.builtin.get_url:
+    url: "{{ argocd_install_manifest_url }}"
+    dest: "{{ argocd_install_manifest.path }}"
+    mode: "0600"
+
+- name: Install Argo CD
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    namespace: "{{ argocd_namespace }}"
+    server_side_apply:
+      field_manager: ansible
+      force_conflicts: true
+    src: "{{ argocd_install_manifest.path }}"
+
+- name: Wait for Argo CD pods to become ready
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - wait
+      - --for=condition=Ready
+      - pod
+      - --all
+      - --namespace
+      - "{{ argocd_namespace }}"
+      - --timeout=300s
+  changed_when: false
+
+- name: Apply GCP bootstrap AppProject
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ argocd_bootstrap_project_manifest }}"
+
+- name: Apply GCP root Application
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ argocd_root_application_manifest }}"
+
+- name: Verify GCP bootstrap AppProject
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: AppProject
+    namespace: "{{ argocd_namespace }}"
+    name: platform-bootstrap-gcp
+  register: argocd_bootstrap_project
+  failed_when: argocd_bootstrap_project.resources | length == 0
+
+- name: Verify GCP root Application
+  kubernetes.core.k8s_info:
+    api_version: argoproj.io/v1alpha1
+    kind: Application
+    namespace: "{{ argocd_namespace }}"
+    name: platform-root-gcp
+  register: argocd_root_application
+  failed_when: argocd_root_application.resources | length == 0
+
+- name: Remove temporary Argo CD installation manifest
+  ansible.builtin.file:
+    path: "{{ argocd_install_manifest.path }}"
+    state: absent
