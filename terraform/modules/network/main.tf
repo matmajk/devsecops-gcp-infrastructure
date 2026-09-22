@@ -71,4 +71,6 @@ resource "google_service_networking_connection" "private_services" {
   reserved_peering_ranges = [
     google_compute_global_address.private_services[0].name
   ]
+
+  deletion_policy = "REMOVE_PEERING"
 }
