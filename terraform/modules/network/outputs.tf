@@ -37,3 +37,19 @@ output "router_name" {
   description = "Name of the regional Cloud Router."
   value       = google_compute_router.this.name
 }
+
+output "private_services_range_name" {
+  description = "Name of the Private Services Access allocated range"
+  value = try(
+    google_compute_global_address.private_services[0].name,
+    null
+  )
+}
+
+output "private_services_connection" {
+  description = "Private Services Access peering connection"
+  value = try(
+    google_service_networking_connection.private_services[0].peering,
+    null
+  )
+}

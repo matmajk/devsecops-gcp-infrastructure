@@ -42,3 +42,15 @@ variable "services_cidr" {
     error_message = "services_cidr must be a valid CIDR range."
   }
 }
+
+variable "private_services_access_enabled" {
+  description = "Whether to configure Private Services Access for managed GCP services"
+  type        = bool
+  default     = false
+}
+
+variable "private_services_prefix_length" {
+  description = "Prefix length for the Private Services Access address range"
+  type        = number
+  default     = 24
+}
