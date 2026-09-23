@@ -1,2 +1,6 @@
 ---
 environment_name: portfolio
+gcp_project_id: devsecops-portfolio-matmajk
+jfrog_database_password_secret_id: devsecops-portfolio-jfrog-db-password
+jfrog_master_key_secret_id: devsecops-portfolio-jfrog-master-key
+jfrog_join_key_secret_id: devsecops-portfolio-jfrog-join-key

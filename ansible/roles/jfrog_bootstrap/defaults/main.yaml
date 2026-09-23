@@ -1,0 +1,6 @@
+---
+jfrog_namespace: jfrog
+
+jfrog_master_key_k8s_secret: jfrog-master-key
+jfrog_join_key_k8s_secret: jfrog-join-key
+jfrog_database_k8s_secret: jfrog-database
