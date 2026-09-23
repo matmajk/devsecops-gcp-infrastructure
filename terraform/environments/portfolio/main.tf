@@ -77,26 +77,3 @@ module "gke" {
     module.project_services,
   ]
 }
-
-module "jfrog" {
-  source = "../../modules/jfrog"
-
-  project_id  = var.project_id
-  region      = var.region
-  name_prefix = local.name_prefix
-
-  network_id = module.network.network_id
-
-  database_version                  = "POSTGRES_15"
-  database_tier                     = "db-g1-small"
-  database_disk_size_gb             = 10
-  database_disk_autoresize_limit_gb = 20
-
-  jfrog_namespace                  = "jfrog"
-  jfrog_kubernetes_service_account = "jfrog"
-
-  depends_on = [
-    module.project_services,
-    module.network,
-  ]
-}
