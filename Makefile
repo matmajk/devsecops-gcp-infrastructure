@@ -160,6 +160,7 @@ ansible-check:
 		( echo "ERROR: Ansible virtual environment not found. Run 'make ansible-setup' first."; exit 1 )
 	ANSIBLE_CONFIG="$(CURDIR)/$(ANSIBLE_DIR)/ansible.cfg" \
 		$(ANSIBLE_PLAYBOOK) \
+		-i $(ANSIBLE_DIR)/inventories/portfolio/gcp.yaml \
 		$(ANSIBLE_DIR)/playbooks/gke-bootstrap.yaml \
 		--syntax-check
 
@@ -168,6 +169,7 @@ gcp-bootstrap:
 		( echo "ERROR: Ansible virtual environment not found. Run 'make ansible-setup' first."; exit 1 )
 	ANSIBLE_CONFIG="$(CURDIR)/$(ANSIBLE_DIR)/ansible.cfg" \
 		$(ANSIBLE_PLAYBOOK) \
+		-i $(ANSIBLE_DIR)/inventories/portfolio/gcp.yaml \
 		$(ANSIBLE_DIR)/playbooks/gke-bootstrap.yaml
 
 # -----------------------------------------------------------------------------
