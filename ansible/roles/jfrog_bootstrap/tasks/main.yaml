@@ -13,6 +13,16 @@
     - "{{ jfrog_join_key_secret_id }}"
   changed_when: false
 
+
+- name: Create JFrog namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ jfrog_namespace }}"
+
 # -----------------------------------------------------------------------------
 # Database password
 # -----------------------------------------------------------------------------
@@ -42,6 +52,43 @@
 - name: Store JFrog database password
   ansible.builtin.set_fact:
     jfrog_database_password: "{{ jfrog_database_password_result.stdout | trim }}"
+  no_log: true
+
+- name: Read JFrog database private IP
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - sql
+      - instances
+      - describe
+      - "{{ jfrog_database_instance_name }}"
+      - "--project={{ gcp_project_id }}"
+      - "--format=value(ipAddresses[0].ipAddress)"
+  register: jfrog_database_private_ip_result
+  changed_when: false
+
+- name: Validate JFrog database private IP
+  ansible.builtin.assert:
+    that:
+      - jfrog_database_private_ip_result.stdout | trim | length > 0
+    fail_msg: JFrog Cloud SQL private IP could not be resolved
+
+- name: Create JFrog database Kubernetes Secret
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ jfrog_database_k8s_secret }}"
+        namespace: "{{ jfrog_namespace }}"
+      type: Opaque
+      stringData:
+        user: "{{ jfrog_database_user }}"
+        password: "{{ jfrog_database_password }}"
+        url: >-
+          jdbc:postgresql://{{ jfrog_database_private_ip_result.stdout | trim }}:5432/{{ jfrog_database_name }}
   no_log: true
 
 # -----------------------------------------------------------------------------
@@ -197,15 +244,6 @@
 # -----------------------------------------------------------------------------
 # Kubernetes prerequisites
 # -----------------------------------------------------------------------------
-
-- name: Create JFrog namespace
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: "{{ jfrog_namespace }}"
 
 - name: Create JFrog master key Kubernetes Secret
   kubernetes.core.k8s:

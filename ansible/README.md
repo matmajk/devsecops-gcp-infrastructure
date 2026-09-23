@@ -275,7 +275,22 @@ Ansible reads the latest version from Secret Manager and keeps the value only in
 
 The password is not printed in Ansible output because secret-handling tasks use `no_log: true`.
 
-The Kubernetes representation required by the JFrog Helm deployment is intentionally deferred until the exact Helm chart version and external database configuration are pinned.
+The database credentials and connection URL are synchronized into the
+`jfrog-database` Kubernetes Secret.
+
+The Secret contains:
+
+```text
+user
+password
+url
+```
+
+The JDBC URL points to the private Cloud SQL address and is consumed by the
+JFrog Helm deployment.
+
+Secret values are retrieved dynamically during bootstrap and are never stored
+in Git.
 
 ### Master and Join Keys
 
@@ -569,8 +584,27 @@ kubectl get secrets -n jfrog
 Expected bootstrap Secrets include:
 
 ```text
+jfrog-database
 jfrog-master-key
 jfrog-join-key
+```
+
+Verify the database Secret keys without printing their values:
+
+```bash
+kubectl get secret jfrog-database \
+  -n jfrog \
+  -o jsonpath='{.data}' | jq 'keys'
+  ```
+
+Expected:
+
+```json
+[
+  "password",
+  "url",
+  "user"
+]
 ```
 
 Verify the Secret keys without printing their values:
