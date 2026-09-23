@@ -1,0 +1,238 @@
+---
+- name: Verify JFrog Secret Manager resources exist
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - describe
+      - "{{ item }}"
+      - "--project={{ gcp_project_id }}"
+  loop:
+    - "{{ jfrog_database_password_secret_id }}"
+    - "{{ jfrog_master_key_secret_id }}"
+    - "{{ jfrog_join_key_secret_id }}"
+  changed_when: false
+
+# -----------------------------------------------------------------------------
+# Database password
+# -----------------------------------------------------------------------------
+
+- name: Read JFrog database password from Secret Manager
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - versions
+      - access
+      - latest
+      - "--secret={{ jfrog_database_password_secret_id }}"
+      - "--project={{ gcp_project_id }}"
+  register: jfrog_database_password_result
+  changed_when: false
+  no_log: true
+
+- name: Validate JFrog database password
+  ansible.builtin.assert:
+    that:
+      - jfrog_database_password_result.stdout is defined
+      - jfrog_database_password_result.stdout | trim | length > 0
+    fail_msg: JFrog database password could not be retrieved from Secret Manager
+  no_log: true
+
+- name: Store JFrog database password
+  ansible.builtin.set_fact:
+    jfrog_database_password: "{{ jfrog_database_password_result.stdout | trim }}"
+  no_log: true
+
+# -----------------------------------------------------------------------------
+# Master key
+# -----------------------------------------------------------------------------
+
+- name: Check existing JFrog master key versions
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - versions
+      - list
+      - "{{ jfrog_master_key_secret_id }}"
+      - "--project={{ gcp_project_id }}"
+      - "--filter=state:ENABLED"
+      - "--format=value(name)"
+      - "--limit=1"
+  register: jfrog_master_key_versions
+  changed_when: false
+  no_log: true
+
+- name: Generate JFrog master key
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - rand
+      - -hex
+      - "32"
+  register: jfrog_generated_master_key
+  when: jfrog_master_key_versions.stdout | trim | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Store generated JFrog master key in Secret Manager
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - versions
+      - add
+      - "{{ jfrog_master_key_secret_id }}"
+      - "--project={{ gcp_project_id }}"
+      - "--data-file=-"
+    stdin: "{{ jfrog_generated_master_key.stdout }}"
+    stdin_add_newline: false
+  when: jfrog_master_key_versions.stdout | trim | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Read JFrog master key from Secret Manager
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - versions
+      - access
+      - latest
+      - "--secret={{ jfrog_master_key_secret_id }}"
+      - "--project={{ gcp_project_id }}"
+  register: jfrog_master_key_result
+  changed_when: false
+  no_log: true
+
+- name: Validate JFrog master key
+  ansible.builtin.assert:
+    that:
+      - jfrog_master_key_result.stdout is defined
+      - jfrog_master_key_result.stdout | trim | length > 0
+    fail_msg: JFrog master key could not be retrieved from Secret Manager
+  no_log: true
+
+- name: Store JFrog master key
+  ansible.builtin.set_fact:
+    jfrog_master_key: "{{ jfrog_master_key_result.stdout | trim }}"
+  no_log: true
+
+# -----------------------------------------------------------------------------
+# Join key
+# -----------------------------------------------------------------------------
+
+- name: Check existing JFrog join key versions
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - versions
+      - list
+      - "{{ jfrog_join_key_secret_id }}"
+      - "--project={{ gcp_project_id }}"
+      - "--filter=state:ENABLED"
+      - "--format=value(name)"
+      - "--limit=1"
+  register: jfrog_join_key_versions
+  changed_when: false
+  no_log: true
+
+- name: Generate JFrog join key
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - rand
+      - -hex
+      - "32"
+  register: jfrog_generated_join_key
+  when: jfrog_join_key_versions.stdout | trim | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Store generated JFrog join key in Secret Manager
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - versions
+      - add
+      - "{{ jfrog_join_key_secret_id }}"
+      - "--project={{ gcp_project_id }}"
+      - "--data-file=-"
+    stdin: "{{ jfrog_generated_join_key.stdout }}"
+    stdin_add_newline: false
+  when: jfrog_join_key_versions.stdout | trim | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Read JFrog join key from Secret Manager
+  ansible.builtin.command:
+    argv:
+      - gcloud
+      - secrets
+      - versions
+      - access
+      - latest
+      - "--secret={{ jfrog_join_key_secret_id }}"
+      - "--project={{ gcp_project_id }}"
+  register: jfrog_join_key_result
+  changed_when: false
+  no_log: true
+
+- name: Validate JFrog join key
+  ansible.builtin.assert:
+    that:
+      - jfrog_join_key_result.stdout is defined
+      - jfrog_join_key_result.stdout | trim | length > 0
+    fail_msg: JFrog join key could not be retrieved from Secret Manager
+  no_log: true
+
+- name: Store JFrog join key
+  ansible.builtin.set_fact:
+    jfrog_join_key: "{{ jfrog_join_key_result.stdout | trim }}"
+  no_log: true
+
+# -----------------------------------------------------------------------------
+# Kubernetes prerequisites
+# -----------------------------------------------------------------------------
+
+- name: Create JFrog namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ jfrog_namespace }}"
+
+- name: Create JFrog master key Kubernetes Secret
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ jfrog_master_key_k8s_secret }}"
+        namespace: "{{ jfrog_namespace }}"
+      type: Opaque
+      stringData:
+        master-key: "{{ jfrog_master_key }}"
+  no_log: true
+
+- name: Create JFrog join key Kubernetes Secret
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ jfrog_join_key_k8s_secret }}"
+        namespace: "{{ jfrog_namespace }}"
+      type: Opaque
+      stringData:
+        join-key: "{{ jfrog_join_key }}"
+  no_log: true
