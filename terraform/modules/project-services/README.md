@@ -64,8 +64,6 @@ Additional services are introduced incrementally together with the components th
 Examples of services intentionally deferred include:
 
 ```text
-sqladmin.googleapis.com
-servicenetworking.googleapis.com
 secretmanager.googleapis.com
 dns.googleapis.com
 binaryauthorization.googleapis.com
