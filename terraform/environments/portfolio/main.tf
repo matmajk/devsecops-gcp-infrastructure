@@ -27,9 +27,6 @@ module "network" {
   pods_cidr     = var.network_cidrs.pods
   services_cidr = var.network_cidrs.services
 
-  private_services_access_enabled = true
-  private_services_prefix_length  = 24
-
   depends_on = [
     module.project_services
   ]

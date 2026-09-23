@@ -4,7 +4,6 @@ locals {
   router_name                   = "${var.name_prefix}-${var.region}-router"
   pods_secondary_range_name     = "${var.name_prefix}-pods"
   services_secondary_range_name = "${var.name_prefix}-services"
-  private_services_range_name   = "${var.name_prefix}-private-services"
 }
 
 resource "google_compute_network" "this" {
@@ -49,28 +48,4 @@ resource "google_compute_router" "this" {
   name    = local.router_name
   region  = var.region
   network = google_compute_network.this.id
-}
-
-resource "google_compute_global_address" "private_services" {
-  count   = var.private_services_access_enabled ? 1 : 0
-  project = var.project_id
-
-  name          = local.private_services_range_name
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = var.private_services_prefix_length
-  network       = google_compute_network.this.id
-}
-
-resource "google_service_networking_connection" "private_services" {
-  count = var.private_services_access_enabled ? 1 : 0
-
-  network = google_compute_network.this.id
-  service = "servicenetworking.googleapis.com"
-
-  reserved_peering_ranges = [
-    google_compute_global_address.private_services[0].name
-  ]
-
-  deletion_policy = "REMOVE_PEERING"
 }
