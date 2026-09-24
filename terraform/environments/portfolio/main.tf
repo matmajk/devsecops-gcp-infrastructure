@@ -74,3 +74,15 @@ module "gke" {
     module.project_services,
   ]
 }
+
+module "artifact_registry" {
+  source = "../../modules/artifact-registry"
+
+  project_id    = var.project_id
+  region        = var.region
+  repository_id = "online-boutique"
+
+  depends_on = [
+    module.project_services,
+  ]
+}
