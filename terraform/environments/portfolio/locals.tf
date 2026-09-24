@@ -16,6 +16,7 @@ locals {
     "monitoring.googleapis.com",
     "serviceusage.googleapis.com",
     "storage.googleapis.com",
-    "secretmanager.googleapis.com"
+    "secretmanager.googleapis.com",
+    "artifactregistry.googleapis.com"
   ])
 }
