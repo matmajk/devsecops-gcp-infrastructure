@@ -12,11 +12,13 @@ locals {
     "compute.googleapis.com",
     "container.googleapis.com",
     "iam.googleapis.com",
+    "iamcredentials.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "serviceusage.googleapis.com",
     "storage.googleapis.com",
     "secretmanager.googleapis.com",
-    "artifactregistry.googleapis.com"
+    "artifactregistry.googleapis.com",
+    "sts.googleapis.com"
   ])
 }
