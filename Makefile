@@ -258,7 +258,7 @@ gcp-show-destroy-plan:
 gcp-destroy: gcp-init
 	@echo
 	@echo "WARNING: This will destroy the ephemeral portfolio runtime environment."
-	@echo "The Terraform bootstrap state bucket and persistent foundation are managed separately and will remain." remain."
+	@echo "The Terraform bootstrap state bucket and persistent foundation are managed separately and will remain."
 	@echo
 	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) destroy \
 		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
