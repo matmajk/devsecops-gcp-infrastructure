@@ -1,0 +1,2 @@
+project_id = "<GCP_PROJECT_ID>"
+region     = "europe-central2"

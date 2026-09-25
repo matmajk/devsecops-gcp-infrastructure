@@ -74,35 +74,3 @@ module "gke" {
     module.project_services,
   ]
 }
-
-module "artifact_registry" {
-  source = "../../modules/artifact-registry"
-
-  project_id    = var.project_id
-  region        = var.region
-  repository_id = "online-boutique"
-
-  depends_on = [
-    module.project_services,
-  ]
-}
-
-module "github_actions_wif" {
-  source = "../../modules/github-actions-wif"
-
-  project_id = var.project_id
-
-  github_repository_owner = "matmajk"
-  github_repository       = "matmajk/online-boutique-devsecops"
-
-  workload_identity_pool_id     = "github-actions"
-  workload_identity_provider_id = "github"
-  service_account_id            = "github-actions-ci"
-
-  artifact_registry_location      = var.region
-  artifact_registry_repository_id = module.artifact_registry.repository_id
-
-  depends_on = [
-    module.project_services,
-  ]
-}

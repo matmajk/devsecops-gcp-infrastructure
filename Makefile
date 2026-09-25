@@ -5,8 +5,9 @@
 ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 TERRAFORM ?= terraform
-TERRAFORM_PORTFOLIO_DIR ?= terraform/environments/portfolio
 TERRAFORM_BOOTSTRAP_DIR ?= terraform/bootstrap
+TERRAFORM_PORTFOLIO_DIR ?= terraform/environments/portfolio
+TERRAFORM_FOUNDATION_DIR := terraform/foundation
 
 TERRAFORM_BACKEND_CONFIG ?= backend.hcl
 TERRAFORM_VAR_FILE ?= terraform.tfvars
@@ -58,7 +59,7 @@ help:
 	@echo "  ansible-setup          Prepare the Ansible environment required for GCP platform bootstrap"
 	@echo "  ansible-check          Validate the GCP platform bootstrap Ansible playbook"
 	@echo "  gcp-bootstrap          Bootstrap Argo CD and GitOps on the GKE cluster"
-	@echo "GCP:"
+	@echo "GCP lifecycle - Portfolio:"
 	@echo "  gcp-preflight          Verify required local GCP configuration"
 	@echo "  gcp-init               Initialize the portfolio GCS backend"
 	@echo "  gcp-plan               Create and save a Terraform execution plan"
@@ -68,6 +69,14 @@ help:
 	@echo "  gcp-show-destroy-plan  Show the saved Terraform destroy plan"
 	@echo "  gcp-destroy            Destroy the complete portfolio environment"
 	@echo "  gcp-clean-plans        Remove saved Terraform plan files"
+	@echo
+	@echo "GCP Lifecycle - Persistent Foundation:"
+	@echo "  gcp-foundation-preflight   Verify persistent foundation configuration"
+	@echo "  gcp-foundation-init        Initialize the persistent foundation backend"
+	@echo "  gcp-foundation-plan        Create and save a foundation Terraform plan"
+	@echo "  gcp-foundation-show-plan   Show the saved foundation Terraform plan"
+	@echo "  gcp-foundation-apply       Apply the saved foundation Terraform plan"
+	@echo "  gcp-foundation-clean-plan  Remove the saved foundation Terraform plan"
 	@echo
 	@echo "Local Kubernetes:"
 	@echo "  bootstrap              Create local Kubernetes infrastructure"
@@ -143,9 +152,9 @@ validate: terraform-validate
 # Ansible - GCP PLATFORM BOOTSTRAP
 # -----------------------------------------------------------------------------
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # GCP PLATFORM BOOTSTRAP
-# =============================================================================
+# -----------------------------------------------------------------------------
 
 .PHONY: ansible-setup ansible-check gcp-bootstrap
 
@@ -173,7 +182,7 @@ gcp-bootstrap:
 		$(ANSIBLE_DIR)/playbooks/gke-bootstrap.yaml
 
 # -----------------------------------------------------------------------------
-# GCP Lifecycle
+# GCP Lifecycle - portfolio
 # -----------------------------------------------------------------------------
 
 .PHONY: gcp-preflight
@@ -248,8 +257,8 @@ gcp-show-destroy-plan:
 .PHONY: gcp-destroy
 gcp-destroy: gcp-init
 	@echo
-	@echo "WARNING: This will destroy all resources managed by the portfolio environment."
-	@echo "The Terraform bootstrap state bucket is not managed by this root module and will remain."
+	@echo "WARNING: This will destroy the ephemeral portfolio runtime environment."
+	@echo "The Terraform bootstrap state bucket and persistent foundation are managed separately and will remain." remain."
 	@echo
 	$(TERRAFORM) -chdir=$(TERRAFORM_PORTFOLIO_DIR) destroy \
 		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
@@ -261,6 +270,68 @@ gcp-destroy: gcp-init
 gcp-clean-plans:
 	@rm -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_PLAN_FILE)"
 	@rm -f "$(TERRAFORM_PORTFOLIO_DIR)/$(TERRAFORM_DESTROY_PLAN_FILE)"
+
+# -----------------------------------------------------------------------------
+# GCP lifecycle - persistent foundation
+# -----------------------------------------------------------------------------
+
+.PHONY: gcp-foundation-preflight
+gcp-foundation-preflight:
+	@command -v $(TERRAFORM) >/dev/null 2>&1 || { \
+		echo "ERROR: Terraform is not available."; \
+		exit 1; \
+	}
+	@test -f "$(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_BACKEND_CONFIG)" || { \
+		echo "ERROR: Missing foundation backend configuration."; \
+		echo "Expected: $(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_BACKEND_CONFIG)"; \
+		exit 1; \
+	}
+	@test -f "$(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_VAR_FILE)" || { \
+		echo "ERROR: Missing foundation Terraform variable file."; \
+		echo "Expected: $(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_VAR_FILE)"; \
+		exit 1; \
+	}
+
+.PHONY: gcp-foundation-init
+gcp-foundation-init: gcp-foundation-preflight
+	$(TERRAFORM) -chdir=$(TERRAFORM_FOUNDATION_DIR) init \
+		-input=false \
+		-backend-config=$(TERRAFORM_BACKEND_CONFIG)
+
+.PHONY: gcp-foundation-plan
+gcp-foundation-plan: gcp-foundation-init
+	$(TERRAFORM) -chdir=$(TERRAFORM_FOUNDATION_DIR) plan \
+		-input=false \
+		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
+		-var-file=$(TERRAFORM_VAR_FILE) \
+		-out=$(TERRAFORM_PLAN_FILE)
+
+.PHONY: gcp-foundation-show-plan
+gcp-foundation-show-plan:
+	@test -f "$(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_PLAN_FILE)" || { \
+		echo "ERROR: No saved foundation Terraform plan found."; \
+		echo "Run 'make gcp-foundation-plan' first."; \
+		exit 1; \
+	}
+	$(TERRAFORM) -chdir=$(TERRAFORM_FOUNDATION_DIR) show \
+		$(TERRAFORM_PLAN_FILE)
+
+.PHONY: gcp-foundation-apply
+gcp-foundation-apply:
+	@test -f "$(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_PLAN_FILE)" || { \
+		echo "ERROR: No saved foundation Terraform plan found."; \
+		echo "Run 'make gcp-foundation-plan' first."; \
+		exit 1; \
+	}
+	$(TERRAFORM) -chdir=$(TERRAFORM_FOUNDATION_DIR) apply \
+		-input=false \
+		-lock-timeout=$(TERRAFORM_LOCK_TIMEOUT) \
+		$(TERRAFORM_PLAN_FILE)
+	@rm -f "$(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_PLAN_FILE)"
+
+.PHONY: gcp-foundation-clean-plan
+gcp-foundation-clean-plan:
+	@rm -f "$(TERRAFORM_FOUNDATION_DIR)/$(TERRAFORM_PLAN_FILE)"
 
 # -----------------------------------------------------------------------------
 # Local Kubernetes Lifecycle
