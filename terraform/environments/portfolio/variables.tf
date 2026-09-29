@@ -70,3 +70,9 @@ variable "gke_config" {
     error_message = "GKE control-plane CIDR values must be valid CIDR ranges."
   }
 }
+
+variable "artifact_registry_repository_id" {
+  description = "Persistent Artifact Registry repository used by GKE workloads"
+  type        = string
+  default     = "online-boutique"
+}
