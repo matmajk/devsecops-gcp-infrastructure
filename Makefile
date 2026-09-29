@@ -152,10 +152,6 @@ validate: terraform-validate
 # Ansible - GCP PLATFORM BOOTSTRAP
 # -----------------------------------------------------------------------------
 
-# -----------------------------------------------------------------------------
-# GCP PLATFORM BOOTSTRAP
-# -----------------------------------------------------------------------------
-
 .PHONY: ansible-setup ansible-check gcp-bootstrap
 
 ansible-setup:
@@ -172,6 +168,10 @@ ansible-check:
 		-i $(ANSIBLE_DIR)/inventories/portfolio/gcp.yaml \
 		$(ANSIBLE_DIR)/playbooks/gke-bootstrap.yaml \
 		--syntax-check
+
+# -----------------------------------------------------------------------------
+# GCP PLATFORM BOOTSTRAP
+# -----------------------------------------------------------------------------
 
 gcp-bootstrap:
 	@test -x "$(ANSIBLE_PLAYBOOK)" || \
